@@ -53,3 +53,13 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Fork information
+
+This is a fork of "Phr00t's Software".
+Original copyright © 2018 Phr00t's Software.
+
+Modifications and additional code:
+Copyright © 2025 Fightlapa - github
+
+This fork is distributed under the same license as the original project.
