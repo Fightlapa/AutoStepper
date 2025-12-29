@@ -10,6 +10,7 @@ import gnu.trove.list.array.TFloatArrayList;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.Scanner;
+import autostepper.SoundEvent;
 
 /**
  *
@@ -17,15 +18,22 @@ import java.util.Scanner;
  */
 public class AutoStepper {
     
+    public static boolean INDICATOR = false;
     public static boolean DEBUG_STEPS = true;
-    public static float MAX_BPM = 170f, MIN_BPM = 70f, BPM_SENSITIVITY = 0.05f, STARTSYNC = 0.0f;
+    public static boolean RANDOMIZED = false;
+    public static boolean PREVIEW_DETECTION = false;
+
+    // Having let's say sample rate of 44.100
+    // We might want to reduce it a bit
+    public static float SAMPLE_REDUCTION_RATIO = 1000f;
+    public static float MIN_BPM = 70f, STARTSYNC = 0.0f;
+    public static float MAX_BPM = 170f;
+    public static int BPM_SENSITIVITY_MS = 40;
     public static double TAPSYNC = -0.11;
     public static boolean USETAPPER = false, HARDMODE = false, UPDATESM = false;
     
     public static Minim minim;
     public static AutoStepper myAS = new AutoStepper();
-    
-    public static final int KICKS = 0, ENERGY = 1, SNARE = 2, HAT = 3;
     
     // collected song data
     private final TFloatArrayList[] manyTimes = new TFloatArrayList[4];
@@ -76,14 +84,15 @@ public class AutoStepper {
                     + "input=<file or dir> output=<songs dir> duration=<seconds to process, default: 90> tap=<true/false> tapsync=<tap time offset, default: -0.11> hard=<true/false> updatesm=<true/false>");
             return;
         }
-        MAX_BPM = Float.parseFloat(getArg(args, "maxbpm", "170f"));
+        MAX_BPM = Integer.parseInt(getArg(args, "maxbpm", "170"));
         outputDir = getArg(args, "output", ".");
         if( outputDir.endsWith("/") == false ) outputDir += "/";
         input = getArg(args, "input", ".");
         duration = Float.parseFloat(getArg(args, "duration", "90"));
         STARTSYNC = Float.parseFloat(getArg(args, "synctime", "0.0"));
-        BPM_SENSITIVITY = Float.parseFloat(getArg(args, "bpmsensitivity", "0.05"));
+        BPM_SENSITIVITY_MS = Integer.parseInt(getArg(args, "bpmsensitivity", "40"));
         USETAPPER = getArg(args, "tap", "false").equals("true");
+        PREVIEW_DETECTION = getArg(args, "preview", "false").equals("true");
         TAPSYNC = Double.parseDouble(getArg(args, "tapsync", "-0.11"));
         HARDMODE = getArg(args, "hard", "false").equals("true");
         UPDATESM = getArg(args, "updatesm", "false").equals("true");
@@ -267,14 +276,18 @@ public class AutoStepper {
       stream.play();
 
       // create the fft/beatdetect objects we'll use for analysis
-      BeatDetect beatDetectFrequencyHighSensitivity = new BeatDetect(BeatDetect.FREQ_ENERGY, fftSize, stream.getFormat().getSampleRate());
-      BeatDetect beatDetectFrequencyLowSensitivity = new BeatDetect(BeatDetect.FREQ_ENERGY, fftSize, stream.getFormat().getSampleRate());
-      BeatDetect beatDetectSoundHighSensitivity = new BeatDetect(BeatDetect.SOUND_ENERGY, fftSize, stream.getFormat().getSampleRate());
-      BeatDetect beatDetectSoundLowSensitivity = new BeatDetect(BeatDetect.SOUND_ENERGY, fftSize, stream.getFormat().getSampleRate());
-      beatDetectFrequencyHighSensitivity.setSensitivity(BPM_SENSITIVITY);
-      beatDetectSoundHighSensitivity.setSensitivity(BPM_SENSITIVITY);
-      beatDetectFrequencyLowSensitivity.setSensitivity(60f/MAX_BPM);
-      beatDetectSoundLowSensitivity.setSensitivity(60f/MAX_BPM);
+      BeatDetect beatDetectFrequencyHighSensitivity = new BeatDetect(fftSize, stream.getFormat().getSampleRate());
+      BeatDetect beatDetectFrequencyLowSensitivity = new BeatDetect(fftSize, stream.getFormat().getSampleRate());
+      BeatDetect beatDetectSoundHighSensitivity = new BeatDetect(stream.getFormat().getSampleRate());
+      BeatDetect beatDetectSoundLowSensitivity = new BeatDetect(stream.getFormat().getSampleRate());
+    //   BeatDetect beatDetectSoundHighSensitivity = new BeatDetect(BeatDetect.SOUND_ENERGY, fftSize, stream.getFormat().getSampleRate());
+    //   BeatDetect beatDetectSoundLowSensitivity = new BeatDetect(BeatDetect.SOUND_ENERGY, fftSize, stream.getFormat().getSampleRate());
+      beatDetectFrequencyHighSensitivity.setSensitivity(BPM_SENSITIVITY_MS);
+      beatDetectSoundHighSensitivity.setSensitivity(BPM_SENSITIVITY_MS);
+      beatDetectFrequencyLowSensitivity.setSensitivity(Math.round(60000f/(float)MAX_BPM));
+      beatDetectSoundLowSensitivity.setSensitivity(Math.round(60000f/(float)MAX_BPM));
+    //   beatDetectFrequencyLowSensitivity.setSensitivity(BPM_SENSITIVITY_MS);
+    //   beatDetectSoundLowSensitivity.setSensitivity(BPM_SENSITIVITY_MS);
       
       FFT fft = new FFT( fftSize, stream.getFormat().getSampleRate() );
 
@@ -282,7 +295,7 @@ public class AutoStepper {
       MultiChannelBuffer buffer = new MultiChannelBuffer(fftSize, stream.getFormat().getChannels());
 
       // figure out how many samples are in the stream so we can allocate the correct number of spectra
-      float songTime = stream.getMillisecondLength() / 1000f;
+      float songTime = stream.getMillisecondLength() / SAMPLE_REDUCTION_RATIO;
       int totalSamples = (int)( songTime * stream.getFormat().getSampleRate() );
       float timePerSample = fftSize / stream.getFormat().getSampleRate();
 
@@ -305,10 +318,10 @@ public class AutoStepper {
         float[] data = buffer.getChannel(0);
         float time = chunkIdx * timePerSample;
         // now analyze the left channel
-        beatDetectFrequencyHighSensitivity.detect(data, time);
-        beatDetectSoundHighSensitivity.detect(data, time);
-        beatDetectFrequencyLowSensitivity.detect(data, time);
-        beatDetectSoundLowSensitivity.detect(data, time);
+        beatDetectFrequencyHighSensitivity.detect(data);
+        beatDetectSoundHighSensitivity.detect(data);
+        beatDetectFrequencyLowSensitivity.detect(data);
+        beatDetectSoundLowSensitivity.detect(data);
         fft.forward(data);
         // fft processing
         float avg = fft.calcAvg(300f, 3000f);
@@ -322,14 +335,14 @@ public class AutoStepper {
         MidFFTAmount.add(avg);
         MidFFTMaxes.add(max);
         // store basic percussion times
-        if(beatDetectFrequencyHighSensitivity.isKick()) manyTimes[KICKS].add(time);
-        if(beatDetectFrequencyHighSensitivity.isHat()) manyTimes[HAT].add(time);
-        if(beatDetectFrequencyHighSensitivity.isSnare()) manyTimes[SNARE].add(time);
-        if(beatDetectSoundHighSensitivity.isOnset()) manyTimes[ENERGY].add(time);
-        if(beatDetectFrequencyLowSensitivity.isKick()) fewTimes[KICKS].add(time);
-        if(beatDetectFrequencyLowSensitivity.isHat()) fewTimes[HAT].add(time);
-        if(beatDetectFrequencyLowSensitivity.isSnare()) fewTimes[SNARE].add(time);
-        if(beatDetectSoundLowSensitivity.isOnset()) fewTimes[ENERGY].add(time);
+        if(beatDetectFrequencyHighSensitivity.isKick()) manyTimes[SoundEvent.KICKS.value()].add(time);
+        if(beatDetectFrequencyHighSensitivity.isHat()) manyTimes[SoundEvent.HAT.value()].add(time);
+        if(beatDetectFrequencyHighSensitivity.isSnare()) manyTimes[SoundEvent.SNARE.value()].add(time);
+        if(beatDetectSoundHighSensitivity.isOnset()) manyTimes[SoundEvent.BEAT.value()].add(time);
+        if(beatDetectFrequencyLowSensitivity.isKick()) fewTimes[SoundEvent.KICKS.value()].add(time);
+        if(beatDetectFrequencyLowSensitivity.isHat()) fewTimes[SoundEvent.HAT.value()].add(time);
+        if(beatDetectFrequencyLowSensitivity.isSnare()) fewTimes[SoundEvent.SNARE.value()].add(time);
+        if(beatDetectSoundLowSensitivity.isOnset()) fewTimes[SoundEvent.BEAT.value()].add(time);
       }
       System.out.println("Loudest midrange average to normalize to 1: " + largestAvg);
       System.out.println("Loudest midrange maximum to normalize to 1: " + largestMax);
@@ -394,7 +407,7 @@ public class AutoStepper {
             startTimes.add(getBestOffset(timePerBeat, manyTimes[i], 0.01f));
         }
         // give extra weight to fewKicks
-        float kickStartTime = getBestOffset(timePerBeat, fewTimes[KICKS], 0.01f);
+        float kickStartTime = getBestOffset(timePerBeat, fewTimes[SoundEvent.KICKS.value()], 0.01f);
         startTimes.add(kickStartTime);
         startTimes.add(kickStartTime);
         startTime = -getMostCommon(startTimes, 0.02f, false);            
@@ -410,7 +423,25 @@ public class AutoStepper {
     //   SMGenerator.AddNotes(smfile, SMGenerator.Beginner, StepGenerator.GenerateNotes(1, HARDMODE ? 2 : 4, manyTimes, fewTimes, MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, seconds, false));
     //   SMGenerator.AddNotes(smfile, SMGenerator.Easy, StepGenerator.GenerateNotes(1, HARDMODE ? 1 : 2, manyTimes, fewTimes, MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, seconds, false));
     //   SMGenerator.AddNotes(smfile, SMGenerator.Medium, StepGenerator.GenerateNotes(2, HARDMODE ? 4 : 6, manyTimes, fewTimes, MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, seconds, false));
-      SMGenerator.AddNotes(smfile, SMGenerator.Hard, StepGenerator.GenerateNotes(2, HARDMODE ? 2 : 4, manyTimes, fewTimes, MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, seconds, false));
+
+    String originalNotes = OgStepGenerator.GenerateNotes(2, HARDMODE ? 2 : 4, manyTimes, fewTimes, MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, seconds, false);
+    String newNotes = StepGenerator.GenerateNotes(filename.getAbsolutePath(), 2, HARDMODE ? 2 : 4, manyTimes, fewTimes, MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, seconds, false);
+    String[] ogLines = originalNotes.split("\\R");
+    String[] newLines = newNotes.split("\\R");
+    // for (int i = 0; i < ogLines.length; i++)
+    // {
+    //     if (ogLines[i].equals(newLines[i]))
+    //     {
+    //         // System.out.println("SAME");
+    //     }
+    //     else
+    //     {
+    //         System.out.println("Line[" + i + "] OG: " + ogLines[i] + " VS NEW: " + newLines[i]);
+    //     }
+    // }
+    System.out.println("Size OG: " + ogLines.length + " NEW size: " + newLines.length);
+    SMGenerator.AddNotes(smfile, SMGenerator.Hard, newNotes);
+    //   SMGenerator.AddNotes(smfile, SMGenerator.Hard, OgStepGenerator.GenerateNotes(2, HARDMODE ? 2 : 4, manyTimes, fewTimes, MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, seconds, false));
     //   SMGenerator.AddNotes(smfile, SMGenerator.Challenge, StepGenerator.GenerateNotes(2, HARDMODE ? 1 : 2, manyTimes, fewTimes, MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, seconds, true));
       SMGenerator.Complete(smfile);
       
