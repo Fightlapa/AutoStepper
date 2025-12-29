@@ -34,7 +34,6 @@ import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Clip;
 import javax.sound.sampled.DataLine;
-import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.Mixer;
 import javax.sound.sampled.SourceDataLine;
 import javax.sound.sampled.TargetDataLine;
@@ -63,6 +62,7 @@ import javazoom.spi.mpeg.sampled.file.MpegAudioFormat;
  *
  */
 
+@SuppressWarnings("deprecation")
 public class JSMinim implements MinimServiceProvider
 {
 	private boolean debug;
@@ -186,14 +186,13 @@ public class JSMinim implements MinimServiceProvider
 	
 	void error(String s)
 	{
-                // this is always annoying junk, not real errors
-		/*System.out.println("==== JavaSound Minim Error ====");
+		System.out.println("==== JavaSound Minim Error ====");
 		String[] lines = s.split("\n");
 		for(int i = 0; i < lines.length; i++)
 		{
 			System.out.println("==== " + lines[i]);
 		}
-		System.out.println();*/
+		System.out.println();
 	}
 
 	public SampleRecorder getSampleRecorder(Recordable source, String fileName,
@@ -261,6 +260,7 @@ public class JSMinim implements MinimServiceProvider
 		return recorder;
 	}
 
+	@SuppressWarnings("resource") // remove warning about ais not being closed. it is used by AudioRecordingStream, so should not be.
 	public AudioRecordingStream getAudioRecordingStream(String filename,
 			int bufferSize, boolean inMemory)
 	{
@@ -299,10 +299,10 @@ public class JSMinim implements MinimServiceProvider
 					if (props.containsKey("duration"))
 					{
 						Long dur = (Long)props.get("duration");
-		            if ( dur.longValue() > 0 )
-		            {
-		              lengthInMillis = dur.longValue() / 1000;
-		            }
+			            if ( dur.longValue() > 0 )
+			            {
+			              lengthInMillis = dur.longValue() / 1000;
+			            }
 					}
 					MP3MetaData meta = new MP3MetaData(filename, lengthInMillis, props);
 					mstream = new JSMPEGAudioRecordingStream(this, meta, ais,	decAis, line, bufferSize);
@@ -324,7 +324,6 @@ public class JSMinim implements MinimServiceProvider
 		return mstream;
 	}
 
-	@SuppressWarnings("unchecked")
 	private Map<String, Object> getID3Tags(String filename)
 	{
 		debug("Getting the properties.");
@@ -332,25 +331,35 @@ public class JSMinim implements MinimServiceProvider
 		try
 		{
 			MpegAudioFileReader reader = new MpegAudioFileReader(this);
-			InputStream stream = (InputStream)createInput.invoke(fileLoader, filename);
-			if ( stream != null )
+			AudioFileFormat baseFileFormat = null;
+			// If the file is on the internet, we have to retrieve the format using the URL.
+			// while we expect that createInput will return a suitable stream for a URL,
+			// we can't count on stream.available() to return the full size of the file.
+			if (filename.startsWith("http"))
 			{
-				AudioFileFormat baseFileFormat = reader.getAudioFileFormat(
-																								stream,
-																								stream.available());
-				stream.close();
-				if (baseFileFormat instanceof TAudioFileFormat)
+				baseFileFormat = reader.getAudioFileFormat( new URL(filename) );
+			}
+			else
+			{
+				InputStream stream = (InputStream)createInput.invoke(fileLoader, filename);
+				if ( stream != null )
 				{
-					TAudioFileFormat fileFormat = (TAudioFileFormat)baseFileFormat;
-					props = (Map<String, Object>)fileFormat.properties();
-					if (props.size() == 0)
-					{
-						error("No file properties available for " + filename + ".");
-					}
-					else
-					{
-						debug("File properties: " + props.toString());
-					}
+					baseFileFormat = reader.getAudioFileFormat(stream, stream.available());
+					stream.close();
+				}
+			}
+			
+			if (baseFileFormat instanceof TAudioFileFormat)
+			{
+				TAudioFileFormat fileFormat = (TAudioFileFormat)baseFileFormat;
+				props = (Map<String, Object>)fileFormat.properties();
+				if (props.size() == 0)
+				{
+					error("No file properties available for " + filename + ".");
+				}
+				else
+				{
+					debug("File properties: " + props.toString());
 				}
 			}
 		}
@@ -371,6 +380,7 @@ public class JSMinim implements MinimServiceProvider
 		return props;
 	}
 
+	@SuppressWarnings("resource") // suppress warning about potential leak of line (will be closed by JSAudioInput)
 	public AudioStream getAudioInput(int type, int bufferSize,
 			float sampleRate, int bitDepth)
 	{
@@ -378,7 +388,7 @@ public class JSMinim implements MinimServiceProvider
 		{
 			throw new IllegalArgumentException("Unsupported bit depth, use either 8 or 16.");
 		}
-		AudioFormat format = new AudioFormat(sampleRate, bitDepth, type, true, false);
+		AudioFormat format = new AudioFormat(sampleRate, bitDepth, type, true, false);		
 		TargetDataLine line = getTargetDataLine(format, bufferSize * 4);
 		if (line != null)
 		{
@@ -387,6 +397,7 @@ public class JSMinim implements MinimServiceProvider
 		return null;
 	}
 
+	@SuppressWarnings("resource")
 	public AudioSample getAudioSample(String filename, int bufferSize)
 	{
 		AudioInputStream ais = getAudioInputStream(filename);
@@ -412,10 +423,13 @@ public class JSMinim implements MinimServiceProvider
 				// be much shorter than the decoded version. so we use the
 				// duration of the file to figure out how many bytes the
 				// decoded file will be.
-				long dur = ((Long)props.get("duration")).longValue();
-				int toRead = (int)AudioUtils.millis2Bytes(dur / 1000, format);
-				samples = loadFloatAudio(ais, toRead);
-				meta = new MP3MetaData(filename, dur / 1000, props);
+				if (props.containsKey( "duration" ))
+				{
+					long dur = ((Long)props.get("duration")).longValue();
+					int toRead = (int)AudioUtils.millis2Bytes(dur / 1000, format);
+					samples = loadFloatAudio(ais, toRead);
+					meta = new MP3MetaData(filename, dur / 1000, props);
+				}
 			}
 			else
 			{
@@ -423,19 +437,37 @@ public class JSMinim implements MinimServiceProvider
 				long length = AudioUtils.frames2Millis(samples.getSampleCount(), format);
 				meta = new BasicMetaData(filename, length, samples.getSampleCount());
 			}
-			AudioOut out = getAudioOutput(format.getChannels(), 
-			                                             bufferSize, 
-			                                             format.getSampleRate(), 
-			                                             format.getSampleSizeInBits());
-			if (out != null)
+			
+			// close the ais because we are done with it
+			try
 			{
-				SampleSignal ssig = new SampleSignal(samples);
-				out.setAudioSignal(ssig);
-				return new JSAudioSample(meta, ssig, out);
+				ais.close();
+			}
+			catch ( IOException e )
+			{
+				e.printStackTrace();
+			}
+			
+			if ( samples != null )
+			{
+				AudioOut out = getAudioOutput(format.getChannels(), 
+				                                             bufferSize, 
+				                                             format.getSampleRate(), 
+				                                             format.getSampleSizeInBits());
+				if (out != null)
+				{
+					SampleSignal ssig = new SampleSignal(samples);
+					out.setAudioSignal(ssig);
+					return new JSAudioSample(meta, ssig, out);
+				}
+				else
+				{
+					error("Couldn't acquire an output.");
+				}
 			}
 			else
 			{
-				error("Couldn't acquire an output.");
+				error("Couldn't load " + filename + " because the length is unknown.");
 			}
 		}
 		return null;
@@ -479,8 +511,8 @@ public class JSMinim implements MinimServiceProvider
     return null;
   }
 
-	public AudioOut getAudioOutput(int type, int bufferSize,
-			float sampleRate, int bitDepth)
+    @SuppressWarnings("resource") // suppress warning about unclosed line
+    public AudioOut getAudioOutput(int type, int bufferSize, float sampleRate, int bitDepth)
 	{
 		if (bitDepth != 8 && bitDepth != 16)
 		{
@@ -496,6 +528,7 @@ public class JSMinim implements MinimServiceProvider
 	}
 
 	/** @deprecated */
+	@SuppressWarnings("resource") // this method is never called
 	public AudioRecording getAudioRecordingClip(String filename)
 	{
 		Clip clip = null;
@@ -542,7 +575,7 @@ public class JSMinim implements MinimServiceProvider
 			{
 				error("File format not supported.");
 				return null;
-			}
+			}		
 		}
 		if (meta == null)
 		{
@@ -553,11 +586,12 @@ public class JSMinim implements MinimServiceProvider
 	}
 	
 	/** @deprecated */
+	@SuppressWarnings("resource") // ais is closed, line need not be
 	public AudioRecording getAudioRecording(String filename)
 	{
 		AudioMetaData meta = null;
 		AudioInputStream ais = getAudioInputStream(filename);
-		byte[] samples;
+		byte[] samples = null;
 		if (ais != null)
 		{
 			AudioFormat format = ais.getFormat();
@@ -578,10 +612,17 @@ public class JSMinim implements MinimServiceProvider
 				// be much shorter than the decoded version. so we use the
 				// duration of the file to figure out how many bytes the
 				// decoded file will be.
-				long dur = ((Long)props.get("duration")).longValue();
-				int toRead = (int)AudioUtils.millis2Bytes(dur / 1000, format);
-				samples = loadByteAudio(ais, toRead);
-				meta = new MP3MetaData(filename, dur / 1000, props);
+				if (props.containsKey( "duration" ))
+				{
+					long dur = ((Long)props.get("duration")).longValue();
+					int toRead = (int)AudioUtils.millis2Bytes(dur / 1000, format);
+					samples = loadByteAudio(ais, toRead);
+					meta = new MP3MetaData(filename, dur / 1000, props);
+				}
+				else
+				{
+					Minim.error( "Can't load " + filename + " because the length of the file is unknown." );
+				}
 			}
 			else
 			{
@@ -589,10 +630,22 @@ public class JSMinim implements MinimServiceProvider
 				long length = AudioUtils.bytes2Millis(samples.length, format);
 				meta = new BasicMetaData(filename, length, samples.length);
 			}
-			SourceDataLine line = getSourceDataLine(format, 2048);
-			if ( line != null )
+			
+			try
 			{
-				return new JSAudioRecording(this, samples, line, meta);
+				ais.close();
+			}
+			catch ( IOException e )
+			{
+			}
+			
+			if (samples != null)
+			{
+				SourceDataLine line = getSourceDataLine(format, 2048);
+				if ( line != null )
+				{
+					return new JSAudioRecording(this, samples, line, meta);
+				}
 			}
 		}
 		return null;
@@ -661,7 +714,6 @@ public class JSMinim implements MinimServiceProvider
 	AudioInputStream getAudioInputStream(String filename)
 	{
 		AudioInputStream ais = null;
-		BufferedInputStream bis = null;
 		if (filename.startsWith("http"))
 		{
 			try
@@ -689,7 +741,8 @@ public class JSMinim implements MinimServiceProvider
 				if ( is != null )
 				{
 					debug("Base input stream is: " + is.toString());
-					bis = new BufferedInputStream(is);
+					@SuppressWarnings("resource")
+					BufferedInputStream bis = new BufferedInputStream(is);
 					ais = getAudioInputStream(bis);
 				
 					if ( ais != null )
@@ -800,6 +853,7 @@ public class JSMinim implements MinimServiceProvider
 		}
 	}
 
+	@SuppressWarnings("resource") // suppress warning about unclosed line
 	SourceDataLine getSourceDataLine(AudioFormat format, int bufferSize)
 	{
 		SourceDataLine line = null;
@@ -844,6 +898,7 @@ public class JSMinim implements MinimServiceProvider
 		return line;
 	}
 
+	@SuppressWarnings("resource") // suppress warning about unclosed line
 	TargetDataLine getTargetDataLine(AudioFormat format, int bufferSize)
 	{
 		TargetDataLine line = null;

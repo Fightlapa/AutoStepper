@@ -33,6 +33,7 @@ public class FilePlayer extends UGen implements Playable
 	private MultiChannelBuffer   buffer;
 	// where in the buffer we should read the next sample from
 	private int 				 bufferOutIndex;
+	private int 				 bufferChannelCount;
 	
 	/**
 	 * Construct a FilePlayer that will read from iFileStream.
@@ -45,7 +46,8 @@ public class FilePlayer extends UGen implements Playable
 	public FilePlayer( AudioRecordingStream iFileStream )
 	{
 		mFileStream 	= iFileStream;
-		buffer 			= new MultiChannelBuffer(1024, mFileStream.getFormat().getChannels());
+		bufferChannelCount = mFileStream.getFormat().getChannels();
+		buffer 			= new MultiChannelBuffer(1024, bufferChannelCount);
 		bufferOutIndex 	= 0;
 		
 		// we'll need to do this eventually, I think.
@@ -159,7 +161,13 @@ public class FilePlayer extends UGen implements Playable
 	   */
 	public void loop(int loopCount)
 	{
-		if ( isPaused )
+		// AudioRecordingStream's loop method is supposed to always start looping from the loop point,
+		// since this is different from the stated Playable behavior, we have to stash the current position
+		// before calling loop so that it will start playing from the correct position.
+		//
+		// If this has never been paused before and the stream isn't playing,
+		// then people probably will expect the file to start playing from the loopStart, not from the beginning.
+		if ( isPaused || mFileStream.isPlaying() )
 		{
 			int pos = mFileStream.getMillisecondPosition();
 			mFileStream.loop( loopCount );
@@ -167,7 +175,7 @@ public class FilePlayer extends UGen implements Playable
 		}
 		else
 		{
-			mFileStream.loop(loopCount);
+			mFileStream.loop( loopCount );
 		}
 		
 		isPaused = false;
@@ -220,8 +228,8 @@ public class FilePlayer extends UGen implements Playable
 	   * the beginning. This will not change the play state. If an error
 	   * occurs while trying to cue, the position will not change. 
 	   * If you try to cue to a negative position or try to a position 
-	   * that is greater than <code>length()</code>, the amount will be clamped 
-	   * to zero or <code>length()</code>.
+	   * that is greater than a non-negative <code>length()</code>, 
+	   * the amount will be clamped to zero or <code>length()</code>.
 	   * 
 	   * @shortdesc Sets the position to <code>millis</code> milliseconds from
 	   * the beginning.
@@ -233,13 +241,19 @@ public class FilePlayer extends UGen implements Playable
 	public void cue(int millis)
 	{
 		if (millis < 0)
-		{
+	    {
 			millis = 0;
-		}
-		else if (millis > length())
-		{
-			millis = length();
-		}
+	    }
+	    else	    	
+	    {
+	    	// only clamp millis to the length of the file if the length is known.
+	    	// otherwise we will try to skip what is asked and count on the underlying stream to handle it.
+	    	int len = mFileStream.getMillisecondLength();
+	    	if (len >= 0 && millis > len)
+	    	{
+	    		millis = len;
+	    	}
+	    }
 		mFileStream.setMillisecondPosition(millis);
 		// change the position in the stream invalidates our buffer, so we read a new buffer
 		fillBuffer();
@@ -247,10 +261,10 @@ public class FilePlayer extends UGen implements Playable
 
 	/**
 	   * Skips <code>millis</code> from the current position. <code>millis</code> 
-	   * can be negative, which will make this skip backwards. If the skip amount 
-	   * would result in a negative position or a position that is greater than 
-	   * <code>length()</code>, the new position will be clamped to zero or 
-	   * <code>length()</code>.
+	   * can be negative, which will make this skip backwards. 
+	   * If the skip amount would result in a negative position 
+	   * or a position that is greater than a non-negative <code>length()</code>, 
+	   * the new position will be clamped to zero or <code>length()</code>.
 	   * 
 	   * @shortdesc Skips <code>millis</code> from the current position.
 	   * 
@@ -266,11 +280,8 @@ public class FilePlayer extends UGen implements Playable
 		{
 			pos = 0;
 		}
-		else if (pos > length())
-		{
-			pos = length();
-		}
-		//Minim.debug("AudioPlayer.skip: skipping " + millis + " milliseconds, new position is " + pos);
+		
+		Minim.debug("FilePlayer.skip: attempting to skip " + millis + " milliseconds, to position " + pos);
 		cue( pos );
 	}
 
@@ -318,20 +329,63 @@ public class FilePlayer extends UGen implements Playable
 		return mFileStream.getMetaData();
 	}
 
-	/**
-	   * Sets the loop points used when looping.
-	   * 
-	   * @param start 
-	   * 			int: the start of the loop in milliseconds
-	   * @param stop 
-	   * 			int: the end of the loop in milliseconds
-	   * 
-	   * @related loop ( )
-	   * @related FilePlayer
-	   */
+    /**
+     * Sets the beginning and end of the section to loop when looping.
+     * These should be between 0 and the length of the file.
+     * If <code>end</code> is larger than the length of the file,
+     * the end of the loop will be set to the end of the file.
+     * If the length of the file is unknown and <end> is positive,
+     * it will be used directly.
+     * If <code>end</code> is negative, the end of the loop 
+     * will be set to the end of the file.
+     * If <code>begin</code> is greater than <code>end</code> 
+     * (unless <code>end</code> is negative), it will be clamped
+     * to one millisecond before <code>end</code>.
+     * 
+     * @param begin 
+     * 		int: the beginning of the loop in milliseconds
+     * @param end 
+     * 		int: the end of the loop in milliseconds, or -1 to set it to the end of the file
+	 *  
+	 *  @related loop ( )
+	 *  @related getLoopBegin ( )
+	 *  @related getLoopEnd ( )
+	 *  @related FilePlayer
+	 */
 	public void setLoopPoints(int start, int stop)
 	{
 		mFileStream.setLoopPoints(start, stop);
+	}
+	
+	/**
+	 * Gets the current millisecond position of the beginning of the looped section.
+	 * 
+	 * @return 
+	 * 		int: the beginning of the looped section in milliseconds
+	 * 
+	 * @related setLoopPoints ( )
+	 * @related loop ( )
+	 * @related FilePlayer
+	 */
+	public int getLoopBegin()
+	{
+		return mFileStream.getLoopBegin();
+	}
+
+	/**
+	 * Gets the current millisecond position of the end of the looped section.
+	 * This can be -1 if the length is unknown and <code>setLoopPoints</code> has never been called.
+	 * 
+	 * @return 
+	 * 		int: the end of the looped section in milliseconds
+	 * 
+	 * @related setLoopPoints ( )
+	 * @related loop ( )
+	 * @related FilePlayer
+	 */
+	public int getLoopEnd()
+	{
+		return mFileStream.getLoopEnd();
 	}
 	
 	/**
@@ -357,20 +411,20 @@ public class FilePlayer extends UGen implements Playable
 		if ( mFileStream.isPlaying() )
 		{
 			// special case: mono expands out to all channels.
-			if ( buffer.getChannelCount() == 1 )
+			if ( bufferChannelCount == 1 )
 			{
 				Arrays.fill( channels, buffer.getSample( 0, bufferOutIndex ) );
 			}
 			// we have more than one channel, don't try to fill larger channel requests
-			if ( buffer.getChannelCount() <= channels.length )
+			else if ( bufferChannelCount <= channels.length )
 			{
-				for(int i = 0 ; i < channels.length; ++i)
+				for(int i = 0 ; i < bufferChannelCount; ++i)
 				{
 					channels[i] = buffer.getSample( i, bufferOutIndex );
 				}
 			}
 			// special case: we are stereo, output is mono.
-			else if ( channels.length == 1 && buffer.getChannelCount() == 2 )
+			else if ( channels.length == 1 && bufferChannelCount == 2 )
 			{
 				channels[0] = (buffer.getSample( 0, bufferOutIndex ) + buffer.getSample( 1, bufferOutIndex ))/2.0f;
 			}
@@ -386,5 +440,4 @@ public class FilePlayer extends UGen implements Playable
 			Arrays.fill( channels, 0 );
 		}
 	}
-
 }

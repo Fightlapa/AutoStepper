@@ -81,6 +81,7 @@ import ddf.minim.spi.SampleRecorder;
  * @author Damien Di Fede
  */
 
+@SuppressWarnings("deprecation")
 public class Minim
 {
 	/** Specifies that you want a MONO AudioInput or AudioOutput */
@@ -297,6 +298,7 @@ public class Minim
 		{
 			s.close();
 		}
+		streams.clear();
 		
 		// stop the implementation
 		mimp.stop();
@@ -311,6 +313,19 @@ public class Minim
 	void removeSource( AudioSource s )
 	{
 		sources.remove( s );
+	}
+	
+	void addStream( AudioStream s )
+	{
+		if ( !streams.contains( s ))
+		{
+			streams.add( s );
+		}
+	}
+	
+	void removeStream( AudioStream s)
+	{
+		streams.remove( s );
 	}
 
 	/**
@@ -390,7 +405,10 @@ public class Minim
 	public AudioSample createSample( float[] sampleData, AudioFormat format, int bufferSize )
 	{
 		AudioSample sample = mimp.getAudioSample( sampleData, format, bufferSize );
-		addSource( sample );
+		if ( sample != null )
+		{
+			addSource( sample );
+		}
 		return sample;
 	}
 
@@ -432,7 +450,10 @@ public class Minim
 	public AudioSample createSample(float[] leftSampleData, float[] rightSampleData, AudioFormat format, int bufferSize)
 	{
 		AudioSample sample = mimp.getAudioSample( leftSampleData, rightSampleData, format, bufferSize );
-		addSource( sample );
+		if ( sample != null )
+		{
+			addSource( sample );
+		}
 		return sample;
 	}
 
@@ -473,7 +494,10 @@ public class Minim
 	public AudioSample loadSample(String filename, int bufferSize)
 	{
 		AudioSample sample = mimp.getAudioSample( filename, bufferSize );
-		addSource( sample );
+		if ( sample != null )
+		{
+			addSource( sample );
+		}
 		return sample;
 	}
 
@@ -596,8 +620,7 @@ public class Minim
 	public AudioRecordingStream loadFileStream(String filename, int bufferSize, boolean inMemory)
 	{
 		AudioRecordingStream stream = mimp.getAudioRecordingStream( filename, bufferSize, inMemory );
-		streams.add( stream );
-		return stream;
+		return stream == null ? null : new TrackedAudioRecordingStream( this, stream );
 	}
 	
 	/**
@@ -634,7 +657,8 @@ public class Minim
 	
 	/**
 	 * Loads the requested file into a MultiChannelBuffer. The buffer's channel count
-	 * and buffer size will be adjusted to match the file.
+	 * and buffer size will be adjusted to match the file. Loading the file will fail
+	 * if the length of the file cannot be determined.
 	 * 
 	 * @shortdesc Loads the requested file into a MultiChannelBuffer.
 	 * 
@@ -655,61 +679,65 @@ public class Minim
 		float     sampleRate 			= 0;
 		AudioRecordingStream  stream 	= mimp.getAudioRecordingStream( filename, readBufferSize, false );
 		if ( stream != null )
-		{
-			//stream.open();
-			stream.play();
-			sampleRate = stream.getFormat().getSampleRate();
-			final int channelCount = stream.getFormat().getChannels();
-			// for reading the file in, in chunks.
-			MultiChannelBuffer readBuffer = new MultiChannelBuffer( channelCount, readBufferSize );
-			// make sure the out buffer is the correct size and type.
-			outBuffer.setChannelCount( channelCount );
+		{			
 			// how many samples to read total
 			long totalSampleCount = stream.getSampleFrameLength();
-			if ( totalSampleCount == -1 )
+			if ( totalSampleCount == -1 && stream.getMillisecondLength() != -1 )
 			{
 				totalSampleCount = AudioUtils.millis2Frames( stream.getMillisecondLength(), stream.getFormat() );
 			}
-			debug( "Total sample count for " + filename + " is " + totalSampleCount );
-			outBuffer.setBufferSize( (int)totalSampleCount );
 			
-			// now read in chunks.
-			long totalSamplesRead = 0;
-			while( totalSamplesRead < totalSampleCount )
+			if ( totalSampleCount > 0 )
 			{
-				// is the remainder smaller than our buffer?
-				if ( totalSampleCount - totalSamplesRead < readBufferSize )
-				{
-					readBuffer.setBufferSize( (int)(totalSampleCount - totalSamplesRead) );
-				}
+				stream.play();
+				sampleRate = stream.getFormat().getSampleRate();
+				final int channelCount = stream.getFormat().getChannels();
+				// for reading the file in, in chunks.
+				MultiChannelBuffer readBuffer = new MultiChannelBuffer( channelCount, readBufferSize );
+				// make sure the out buffer is the correct size and type.
+				outBuffer.setChannelCount( channelCount );
+		 
+				debug( "Total sample count for " + filename + " is " + totalSampleCount );
+				outBuffer.setBufferSize( (int)totalSampleCount );
 				
-				int samplesRead = stream.read( readBuffer );
-				
-				if ( samplesRead == 0 )
+				// now read in chunks.
+				long totalSamplesRead = 0;
+				while( totalSamplesRead < totalSampleCount )
 				{
-					debug( "loadSampleIntoBuffer: got 0 samples read" );
-					break;
-				}
-				
-				// copy data from one buffer to the other.
-				for(int i = 0; i < channelCount; ++i)
-				{
-					// a faster way to do this would be nice.
-					for(int s = 0; s < samplesRead; ++s)
+					// is the remainder smaller than our buffer?
+					if ( totalSampleCount - totalSamplesRead < readBufferSize )
 					{
-						outBuffer.setSample( i, (int)totalSamplesRead+s, readBuffer.getSample( i, s ) );
+						readBuffer.setBufferSize( (int)(totalSampleCount - totalSamplesRead) );
 					}
+					
+					int samplesRead = stream.read( readBuffer );
+					
+					if ( samplesRead == 0 )
+					{
+						debug( "loadSampleIntoBuffer: got 0 samples read" );
+						break;
+					}
+					
+					// copy data from one buffer to the other.
+					for(int i = 0; i < channelCount; ++i)
+					{
+						// a faster way to do this would be nice.
+						for(int s = 0; s < samplesRead; ++s)
+						{
+							outBuffer.setSample( i, (int)totalSamplesRead+s, readBuffer.getSample( i, s ) );
+						}
+					}
+					
+					totalSamplesRead += samplesRead;
 				}
 				
-				totalSamplesRead += samplesRead;
+				if ( totalSamplesRead != totalSampleCount )
+				{
+					outBuffer.setBufferSize( (int)totalSamplesRead );
+				}
+				
+				debug("loadSampleIntoBuffer: final output buffer size is " + outBuffer.getBufferSize() );
 			}
-			
-			if ( totalSamplesRead != totalSampleCount )
-			{
-				outBuffer.setBufferSize( (int)totalSamplesRead );
-			}
-			
-			debug("loadSampleIntoBuffer: final output buffer size is " + outBuffer.getBufferSize() );
 			
 			stream.close();
 		}
@@ -922,8 +950,7 @@ public class Minim
 	public AudioStream getInputStream(int type, int bufferSize, float sampleRate, int bitDepth)
 	{
 		AudioStream stream = mimp.getAudioInput( type, bufferSize, sampleRate, bitDepth );
-		streams.add( stream );
-		return stream;
+		return stream == null ? null : new TrackedAudioStream<AudioStream>( this, stream );
 	}
 
 	/**
