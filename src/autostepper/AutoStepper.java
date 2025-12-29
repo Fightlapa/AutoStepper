@@ -267,14 +267,14 @@ public class AutoStepper {
       stream.play();
 
       // create the fft/beatdetect objects we'll use for analysis
-      BeatDetect manybd = new BeatDetect(BeatDetect.FREQ_ENERGY, fftSize, stream.getFormat().getSampleRate());
-      BeatDetect fewbd = new BeatDetect(BeatDetect.FREQ_ENERGY, fftSize, stream.getFormat().getSampleRate());
-      BeatDetect manybde = new BeatDetect(BeatDetect.SOUND_ENERGY, fftSize, stream.getFormat().getSampleRate());
-      BeatDetect fewbde = new BeatDetect(BeatDetect.SOUND_ENERGY, fftSize, stream.getFormat().getSampleRate());
-      manybd.setSensitivity(BPM_SENSITIVITY);
-      manybde.setSensitivity(BPM_SENSITIVITY);
-      fewbd.setSensitivity(60f/MAX_BPM);
-      fewbde.setSensitivity(60f/MAX_BPM);
+      BeatDetect beatDetectFrequencyHighSensitivity = new BeatDetect(BeatDetect.FREQ_ENERGY, fftSize, stream.getFormat().getSampleRate());
+      BeatDetect beatDetectFrequencyLowSensitivity = new BeatDetect(BeatDetect.FREQ_ENERGY, fftSize, stream.getFormat().getSampleRate());
+      BeatDetect beatDetectSoundHighSensitivity = new BeatDetect(BeatDetect.SOUND_ENERGY, fftSize, stream.getFormat().getSampleRate());
+      BeatDetect beatDetectSoundLowSensitivity = new BeatDetect(BeatDetect.SOUND_ENERGY, fftSize, stream.getFormat().getSampleRate());
+      beatDetectFrequencyHighSensitivity.setSensitivity(BPM_SENSITIVITY);
+      beatDetectSoundHighSensitivity.setSensitivity(BPM_SENSITIVITY);
+      beatDetectFrequencyLowSensitivity.setSensitivity(60f/MAX_BPM);
+      beatDetectSoundLowSensitivity.setSensitivity(60f/MAX_BPM);
       
       FFT fft = new FFT( fftSize, stream.getFormat().getSampleRate() );
 
@@ -305,10 +305,10 @@ public class AutoStepper {
         float[] data = buffer.getChannel(0);
         float time = chunkIdx * timePerSample;
         // now analyze the left channel
-        manybd.detect(data, time);
-        manybde.detect(data, time);
-        fewbd.detect(data, time);
-        fewbde.detect(data, time);
+        beatDetectFrequencyHighSensitivity.detect(data, time);
+        beatDetectSoundHighSensitivity.detect(data, time);
+        beatDetectFrequencyLowSensitivity.detect(data, time);
+        beatDetectSoundLowSensitivity.detect(data, time);
         fft.forward(data);
         // fft processing
         float avg = fft.calcAvg(300f, 3000f);
@@ -322,14 +322,14 @@ public class AutoStepper {
         MidFFTAmount.add(avg);
         MidFFTMaxes.add(max);
         // store basic percussion times
-        if(manybd.isKick()) manyTimes[KICKS].add(time);
-        if(manybd.isHat()) manyTimes[HAT].add(time);
-        if(manybd.isSnare()) manyTimes[SNARE].add(time);
-        if(manybde.isOnset()) manyTimes[ENERGY].add(time);
-        if(fewbd.isKick()) fewTimes[KICKS].add(time);
-        if(fewbd.isHat()) fewTimes[HAT].add(time);
-        if(fewbd.isSnare()) fewTimes[SNARE].add(time);
-        if(fewbde.isOnset()) fewTimes[ENERGY].add(time);
+        if(beatDetectFrequencyHighSensitivity.isKick()) manyTimes[KICKS].add(time);
+        if(beatDetectFrequencyHighSensitivity.isHat()) manyTimes[HAT].add(time);
+        if(beatDetectFrequencyHighSensitivity.isSnare()) manyTimes[SNARE].add(time);
+        if(beatDetectSoundHighSensitivity.isOnset()) manyTimes[ENERGY].add(time);
+        if(beatDetectFrequencyLowSensitivity.isKick()) fewTimes[KICKS].add(time);
+        if(beatDetectFrequencyLowSensitivity.isHat()) fewTimes[HAT].add(time);
+        if(beatDetectFrequencyLowSensitivity.isSnare()) fewTimes[SNARE].add(time);
+        if(beatDetectSoundLowSensitivity.isOnset()) fewTimes[ENERGY].add(time);
       }
       System.out.println("Loudest midrange average to normalize to 1: " + largestAvg);
       System.out.println("Loudest midrange maximum to normalize to 1: " + largestMax);

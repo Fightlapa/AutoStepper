@@ -46,10 +46,10 @@ public class StepGenerator {
     
     private static char[] getHoldStops(int currentHoldCount, float time, int holds) {
         char[] holdstops = new char[4];
-        holdstops[0] = '0';
-        holdstops[1] = '0';
-        holdstops[2] = '0';
-        holdstops[3] = '0';
+        holdstops[0] = EMPTY;
+        holdstops[1] = EMPTY;
+        holdstops[2] = EMPTY;
+        holdstops[3] = EMPTY;
         if( currentHoldCount > 0 ) {
             while( holds < 0 ) {
                 int index = getRandomHold();
@@ -112,13 +112,13 @@ public class StepGenerator {
             int currentIndex = AllNoteLines.size()-1;
             char[] currentLine = AllNoteLines.get(currentIndex);
             for(int i=0;i<4;i++) {
-                if( currentLine[i] == '3' ) {
+                if( currentLine[i] == STOP ) {
                     // got a hold stop here, lets move it up
                     currentLine[i] = '0';
                     char[] nextLineUp = AllNoteLines.get(currentIndex-1);
-                    if( nextLineUp[i] == '2' ) {
-                        nextLineUp[i] = '1';
-                    } else nextLineUp[i] = '3';
+                    if( nextLineUp[i] == HOLD ) {
+                        nextLineUp[i] = STEP;
+                    } else nextLineUp[i] = STOP;
                 }
             }
         }
@@ -234,6 +234,7 @@ public class StepGenerator {
         boolean skippedLast = false;
         float timeGranularity = timePerBeat / stepGranularity;
         for(float t = timeOffset; t <= totalTime; t += timeGranularity) {
+            boolean isHalfBeat = timeIndex % 2 == 1;
             int steps = 0, holds = 0;
             String lastLine = getLastNoteLine();
             if( t > 0f ) {
@@ -249,7 +250,7 @@ public class StepGenerator {
                 } else if( fftmax < 0.5f ) {
                     holds = fftmax < 0.25f ? -2 : -1;
                 }
-                if( nearKick && (nearSnare || nearEnergy) && timeIndex % 2 == 0 &&
+                if( nearKick && (nearSnare || nearEnergy) && !isHalfBeat &&
                     steps > 0 && lastLine.contains("1") == false && lastLine.contains("2") == false && lastLine.contains("3") == false ) {
                      // only jump in high areas, on solid beats (not half beats)
                     steps = 2;
@@ -257,8 +258,8 @@ public class StepGenerator {
                 // wait, are we skipping new steps?
                 // if we just got done from a jump, don't have a half beat
                 // if we are holding something, don't do half-beat steps
-                if( timeIndex % 2 == 1 &&
-                    (skipChance > 1 && timeIndex % 2 == 1 && rand.nextInt(skipChance) > 0 || getHoldCount() > 0) ||
+                if( isHalfBeat &&
+                    (skipChance > 1 && rand.nextInt(skipChance) > 0 || getHoldCount() > 0) ||
                     t - lastJumpTime < timePerBeat ) {
                     steps = 0;
                     if( holds > 0 ) holds = 0;
