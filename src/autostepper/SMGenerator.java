@@ -14,6 +14,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+import autostepper.image.GoogleImageSearch;
+
 /**
  *
  * @author Phr00t

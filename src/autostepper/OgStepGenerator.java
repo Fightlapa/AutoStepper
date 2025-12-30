@@ -4,6 +4,8 @@ import gnu.trove.list.array.TFloatArrayList;
 import java.util.ArrayList;
 import java.util.Random;
 
+import autostepper.vibejudges.SoundParameter;
+
 /**
  *
  * @author Phr00t
@@ -260,9 +262,9 @@ public class OgStepGenerator {
                 float fftavg = getFFT(t, FFTAverages, timePerFFT);
                 float fftmax = getFFT(t, FFTMaxes, timePerFFT);
                 boolean sustained = sustainedFFT(t, 0.75f, timeGranularity, timePerFFT, FFTMaxes, FFTAverages, 0.25f, 0.45f);
-                boolean nearKick = isNearATime(t, fewTimes[SoundEvent.KICKS.value()], timePerBeat / stepGranularity);
-                boolean nearSnare = isNearATime(t, fewTimes[SoundEvent.SNARE.value()], timePerBeat / stepGranularity);
-                boolean nearEnergy = isNearATime(t, fewTimes[SoundEvent.BEAT.value()], timePerBeat / stepGranularity);
+                boolean nearKick = isNearATime(t, fewTimes[SoundParameter.KICKS.value()], timePerBeat / stepGranularity);
+                boolean nearSnare = isNearATime(t, fewTimes[SoundParameter.SNARE.value()], timePerBeat / stepGranularity);
+                boolean nearEnergy = isNearATime(t, fewTimes[SoundParameter.BEAT.value()], timePerBeat / stepGranularity);
                 steps = sustained || nearKick || nearSnare || nearEnergy ? 1 : 0;
                 if( sustained ) {
                     holds = 1 + (nearEnergy ? 1 : 0);

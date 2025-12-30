@@ -1,0 +1,57 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "20s",
+            "request": "launch",
+            "mainClass": "autostepper.AutoStepper",
+            "projectName": "AutoStepper",
+            "args": "input=samples/${input:mp3} output=${input:out_dir} duration=20 updatesm=true", 
+            "vmArgs": "-Xmx512m",
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "java",
+            "name": "Full",
+            "request": "launch",
+            "mainClass": "autostepper.AutoStepper",
+            "projectName": "AutoStepper",
+            "args": "input=samples/${input:mp3} output=${input:out_dir} duration=300 updatesm=true", 
+            "vmArgs": "-Xmx512m",
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "java",
+            "name": "PreviewAll",
+            "request": "launch",
+            "mainClass": "autostepper.AutoStepper",
+            "projectName": "AutoStepper",
+            "args": "input=samples/${input:mp3} output=${input:out_dir} duration=300 updatesm=true preview=true", 
+            "vmArgs": "-Xmx512m",
+            "console": "integratedTerminal"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "mp3",
+            "type": "pickString",
+            "description": "Select mp3 to use",
+            "options": ["PopVocal-AgusAlvarez&Markvard-BeautifulLiar(freetouse.com).mp3",
+                         "HipHop-Aylex-GoodDays(freetouse.com).mp3",
+                         "Electro-Aylex-TurnItLouder(freetouse.com).mp3",
+                         "Disco-Burgundy-DreamsofTomorrow(freetouse.com).mp3",
+                         "DontAskWhatTheHeckIsThat.mp3"],
+            "default": "Electro-Aylex-TurnItLouder(freetouse.com).mp3"
+        },
+        {
+            "id": "out_dir",
+            "type": "promptString",
+            "description": "Select output to use",
+            "default": "out"
+        }
+    ]
+}

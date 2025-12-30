@@ -1,4 +1,4 @@
 .gradle/*
 build/*
 bin/*
-.vscode/*
+.vscode/settings.json
