@@ -23,52 +23,11 @@ public class PopStepAssigner extends CStepAssigner {
         {
             List<Integer> actions = new ArrayList<>();
 
-            Map<VibeScore, Integer> previousPreviousVibe;
-            if (i - 2 >= 0)
-            {
-                previousPreviousVibe = NoteVibes.get(i - 2);
-            }
-            else
-            {
-                previousPreviousVibe = new HashMap<>();
-                previousPreviousVibe.put(VibeScore.POWER, 0);
-                previousPreviousVibe.put(VibeScore.SUSTAIN, 0);
-            }
-
-            Map<VibeScore, Integer> previousVibe;
-            if (i - 1 >= 0)
-            {
-                previousVibe = NoteVibes.get(i - 1);
-            }
-            else
-            {
-                previousVibe = new HashMap<>();
-                previousVibe.put(VibeScore.POWER, 0);
-                previousVibe.put(VibeScore.SUSTAIN, 0);
-            }
+            Map<VibeScore, Integer> previousPreviousVibe = getVibe(NoteVibes, i, -2);
+            Map<VibeScore, Integer> previousVibe = getVibe(NoteVibes, i, -1);
             Map<VibeScore, Integer> currentVibe = NoteVibes.get(i);
-            Map<VibeScore, Integer> nextVibe;
-            if (i + 1 < NoteVibes.size())
-            {
-                nextVibe = NoteVibes.get(i + 1);
-            }
-            else
-            {
-                nextVibe = new HashMap<>();
-                nextVibe.put(VibeScore.POWER, 0);
-                nextVibe.put(VibeScore.SUSTAIN, 0);
-            }
-            Map<VibeScore, Integer> nextNextVibe;
-            if (i + 2 < NoteVibes.size())
-            {
-                nextNextVibe = NoteVibes.get(i + 2);
-            }
-            else
-            {
-                nextNextVibe = new HashMap<>();
-                nextNextVibe.put(VibeScore.POWER, 0);
-                nextNextVibe.put(VibeScore.SUSTAIN, 0);
-            }
+            Map<VibeScore, Integer> nextVibe = getVibe(NoteVibes, i, 1);
+            Map<VibeScore, Integer> nextNextVibe = getVibe(NoteVibes, i, 2);
 
             if (currentVibe.get(VibeScore.POWER) > 2)
             {
@@ -104,38 +63,7 @@ public class PopStepAssigner extends CStepAssigner {
 
             boolean anyHolds = false;
             // First maintain holds if there are any
-            if (i - 1 >= 0)
-            {
-                for (int j = 0; j < 4; j++)
-                {
-                    if (NoteMoves.get(i - 1).get(j) == HOLD)
-                    {
-                        anyHolds = true;
-                        if (actions.contains(ACTION_HOLD) || actions.contains(DOUBLE_HOLD))
-                        {
-                            arrowLine.set(j, KEEP_HOLDING);
-                        }
-                        else
-                        {
-                            arrowLine.set(j, STOP);
-                            footLocked = false;
-                        }
-                    }
-                    if (NoteMoves.get(i - 1).get(j) == KEEP_HOLDING)
-                    {
-                        anyHolds = true;
-                        if (actions.contains(ACTION_HOLD))
-                        {
-                            arrowLine.set(j, KEEP_HOLDING);
-                        }
-                        else
-                        {
-                            arrowLine.set(j, STOP);
-                            footLocked = false;
-                        }
-                    }
-                }
-            }
+            anyHolds = maintainHolds(NoteMoves, i, actions, arrowLine, anyHolds);
             
             if (!anyHolds && (actions.contains(ACTION_HOLD) || actions.contains(DOUBLE_HOLD)))
             {
@@ -153,6 +81,17 @@ public class PopStepAssigner extends CStepAssigner {
                     arrowLine.set(stepPosition.value(), HOLD);
                     SwitchFoot();
                 }
+            }
+
+            int numberOfHolds = getNumberOfHolds(arrowLine);
+            if (numberOfHolds == 2)
+            {
+                actions.remove((Object)JUMP);
+                actions.remove((Object)TAP);
+            }
+            else if (numberOfHolds == 1)
+            {
+                actions.remove((Object)JUMP);
             }
 
             int arrows = 0;
@@ -197,6 +136,68 @@ public class PopStepAssigner extends CStepAssigner {
             NoteMoves.add(arrowLine);
         }
         return NoteMoves;
+    }
+
+    private int getNumberOfHolds(ArrayList<Character> arrowLine) {
+        int count = 0;
+        for (char c : arrowLine) {
+            if (c == HOLD || c == STOP || c == KEEP_HOLDING) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private boolean maintainHolds(ArrayList<ArrayList<Character>> NoteMoves, int i, List<Integer> actions,
+            ArrayList<Character> arrowLine, boolean anyHolds) {
+        if (i - 1 >= 0)
+        {
+            for (int j = 0; j < 4; j++)
+            {
+                if (NoteMoves.get(i - 1).get(j) == HOLD)
+                {
+                    anyHolds = true;
+                    if (actions.contains(ACTION_HOLD) || actions.contains(DOUBLE_HOLD))
+                    {
+                        arrowLine.set(j, KEEP_HOLDING);
+                    }
+                    else
+                    {
+                        arrowLine.set(j, STOP);
+                        footLocked = false;
+                    }
+                }
+                if (NoteMoves.get(i - 1).get(j) == KEEP_HOLDING)
+                {
+                    anyHolds = true;
+                    if (actions.contains(ACTION_HOLD))
+                    {
+                        arrowLine.set(j, KEEP_HOLDING);
+                    }
+                    else
+                    {
+                        arrowLine.set(j, STOP);
+                        footLocked = false;
+                    }
+                }
+            }
+        }
+        return anyHolds;
+    }
+
+    private Map<VibeScore, Integer> getVibe(ArrayList<Map<VibeScore, Integer>> NoteVibes, int currentVibeIdx, int offset) {
+        Map<VibeScore, Integer> vibe;
+        if (currentVibeIdx + offset >= 0 && currentVibeIdx + offset < NoteVibes.size())
+        {
+            vibe = NoteVibes.get(currentVibeIdx + offset);
+        }
+        else
+        {
+            vibe = new HashMap<>();
+            vibe.put(VibeScore.POWER, 0);
+            vibe.put(VibeScore.SUSTAIN, 0);
+        }
+        return vibe;
     }
 
 }

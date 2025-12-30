@@ -449,7 +449,7 @@ public class BeatDetect
 	 * 
 	 * @related BeatDetect
 	 */
-	public boolean isSnare()
+	public boolean isSnare(boolean strict)
 	{
 		if (algorithm == SOUND_ENERGY)
 		{
@@ -457,7 +457,11 @@ public class BeatDetect
 		}
 		int lower = 8 >= spect.avgSize() ? spect.avgSize() : 8;
 		int upper = spect.avgSize() - 1;
-		int thresh = (upper - lower) / 3 + 1;
+		int thresh = (upper - lower) / 3;
+		if (strict)
+		{
+			thresh += 1;
+		}
 		return isRange(lower, upper, thresh);
 	}
 

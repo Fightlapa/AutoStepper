@@ -30,7 +30,7 @@ public class StepGenerator {
 
     public void preview(String filename, ArrayList<Map<SoundParameter, Object>> detected, long stepGranularity, float timePerBeat)
     {
-        AudioSample fullSong = AutoStepper.minim.loadSample(filename);
+        AudioSample fullSong = AutoStepper.minimLib.loadSample(filename);
  
         // get the most accurate start time as possible
         long millis = System.currentTimeMillis();
