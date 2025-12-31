@@ -121,13 +121,14 @@ public class SMGenerator {
         File imgFile = new File(dir, filename + "_img.png");
         String imgFileName = "";
         if( imgFile.exists() == false ) {
-            System.out.println("Attempting to get image for background & banner...");            
-            GoogleImageSearch.FindAndSaveImage(songname.replace("(", " ").replace(")", " ").replace("www.", " ").replace("_", " ").replace("-", " ").replace("&", " ").replace("[", " ").replace("]", " "), imgFile.getAbsolutePath());
+            // Probably it's outdated now as I cannot make it download anything right now
+            // System.out.println("Attempting to get image for background & banner...");            
+            // GoogleImageSearch.FindAndSaveImage(songname.replace("(", " ").replace(")", " ").replace("www.", " ").replace("_", " ").replace("-", " ").replace("&", " ").replace("[", " ").replace("]", " "), imgFile.getAbsolutePath());
         }
         if( imgFile.exists() ) {
             System.out.println("Got an image file!");
             imgFileName = imgFile.getName();
-        } else System.out.println("No image file to use :(");
+        }
         try {
             smfile.delete();
             copyFileUsingStream(songfile, new File(dir, filename));

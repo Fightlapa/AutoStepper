@@ -240,7 +240,7 @@ public class OgStepGenerator {
                                        TFloatArrayList[] fewTimes,
                                        TFloatArrayList FFTAverages, TFloatArrayList FFTMaxes, float timePerFFT,
                                        float timePerBeat, float timeOffset, float totalTime,
-                                       boolean allowMines) {      
+                                       boolean allowMines, TFloatArrayList volume) {      
         // reset variables
         AllNoteLines.clear();
         lastJumpTime = -10f;

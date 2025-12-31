@@ -1,4 +1,4 @@
-package autostepper.moveassigners;
+package autostepper.moveassigners.steporganizer;
 
 public enum Foot {
     LEFT(0),

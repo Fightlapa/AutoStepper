@@ -7,7 +7,7 @@ import java.util.Map;
 import autostepper.vibejudges.SoundParameter;
 import gnu.trove.list.array.TFloatArrayList;
 
-public class StandardEventsDetector extends CMusicEventsDetector {
+public class DiffSensitiveEventsDetector extends CMusicEventsDetector {
 
     @Override
     public ArrayList<Map<SoundParameter, Object>> GetEvents(int stepGranularity, float timePerBeat, float timeOffset,
@@ -17,6 +17,9 @@ public class StandardEventsDetector extends CMusicEventsDetector {
 
         int timeIndex = 0;
         float timeGranularity = timePerBeat / stepGranularity;
+        float standardPrecision = timeGranularity * granularityModifier;
+        float highPrecision = standardPrecision * preciseGranularityModifier;
+        float ultraPrecision = highPrecision / 2f;
         for(float t = timeOffset; t <= totalTime; t += timeGranularity) {
             boolean isHalfBeat = timeIndex % 2 == 1;
             boolean nearKick = false;
@@ -25,15 +28,13 @@ public class StandardEventsDetector extends CMusicEventsDetector {
             boolean nearEnergy = false;
             if( t > 0f ) {
                 int idx = (int)Math.floor((t * FFTAverages.size()) / totalTime);
-                // float fftmax = getFFT(t, FFTMaxes, timePerFFT);
                 float fftmax = FFTMaxes.getQuick(idx);
                 float fftavg = FFTAverages.getQuick(idx);
                 boolean sustained = sustainedFFT(t, 0.75f, timeGranularity, timePerFFT, FFTMaxes, FFTAverages, sustainThresholdFactor, sustainThresholdFactor * 2);
-                float checkWindow = (timePerBeat * 1.03f) / stepGranularity;
-                nearKick = isNearATime(t, fewTimes[SoundParameter.KICKS.value()], checkWindow);
-                nearSnare = isNearATime(t, fewTimes[SoundParameter.SNARE.value()], checkWindow);
-                nearEnergy = isNearATime(t, fewTimes[SoundParameter.BEAT.value()], checkWindow);
-                nearHat = isNearATime(t, fewTimes[SoundParameter.HAT.value()], checkWindow);
+                nearKick = isNearATime(t, fewTimes[SoundParameter.KICKS.value()], standardPrecision) && !isNearATime(t - highPrecision, fewTimes[SoundParameter.KICKS.value()], ultraPrecision);
+                nearSnare = isNearATime(t, fewTimes[SoundParameter.SNARE.value()], standardPrecision) && !isNearATime(t - highPrecision, fewTimes[SoundParameter.SNARE.value()], ultraPrecision);
+                nearEnergy = isNearATime(t, fewTimes[SoundParameter.BEAT.value()], standardPrecision) && !isNearATime(t - highPrecision, fewTimes[SoundParameter.BEAT.value()], ultraPrecision);
+                nearHat = isNearATime(t, fewTimes[SoundParameter.HAT.value()], standardPrecision) && !isNearATime(t - highPrecision, fewTimes[SoundParameter.HAT.value()], ultraPrecision);
                 Map<SoundParameter, Object> events = new HashMap<>();
                 events.put(SoundParameter.KICKS, nearKick);
                 events.put(SoundParameter.SNARE, nearSnare);

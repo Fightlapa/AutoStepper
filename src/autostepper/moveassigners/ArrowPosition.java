@@ -8,7 +8,8 @@ public enum ArrowPosition {
     LEFT(0),
     DOWN(1),
     UP(2),
-    RIGHT(3);
+    RIGHT(3),
+    NOWHERE(4);
 
     private final int value;
 

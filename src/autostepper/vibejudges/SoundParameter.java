@@ -10,7 +10,8 @@ public enum SoundParameter {
     NOTHING(6),
     HALF_BEAT(7),
     FFT_MAX(8),
-    FFT_AVG(9);
+    FFT_AVG(9),
+    VOLUME(10);
 
     private final int value;
 

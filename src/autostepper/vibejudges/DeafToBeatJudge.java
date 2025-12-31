@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
-public class PopJudge implements IVibeJudge {
+public class DeafToBeatJudge implements IVibeJudge {
 
     @Override
     public ArrayList<Map<VibeScore, Integer>> GetVibes(ArrayList<Map<SoundParameter, Object>> NoteEvents)
@@ -25,18 +25,6 @@ public class PopJudge implements IVibeJudge {
                 if ((boolean)map.get(SoundParameter.SNARE))
                 {
                     // Some standard sound or something to sustain deserves at least some vibe
-                    vibePower++;
-                }
-                
-                if ((boolean)map.get(SoundParameter.BEAT))
-                {
-                    // Some standard sound or something to sustain deserves at least some vibe
-                    vibePower++;
-                }
-
-                if ((boolean)map.get(SoundParameter.BEAT) && (boolean)map.get(SoundParameter.KICKS) && !(boolean)map.get(SoundParameter.HALF_BEAT))
-                {
-                    // If it's kicks, on beat, without half-beat, that sounds like a good candidate for jump, that sounds like good vibe
                     vibePower++;
                 }
 
@@ -67,7 +55,7 @@ public class PopJudge implements IVibeJudge {
 
     @Override
     public String WhatsYourNameMrJudge() {
-        return "My name is Jeff. 21st pop song finalists.";
+        return "I CANNOT HEAR YOU";
     }
     
 }

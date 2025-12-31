@@ -11,5 +11,6 @@ public interface ISoundProcessor {
     public float GetBpm();
     public TFloatArrayList GetMidFFTAmount();
     public TFloatArrayList GetMidFFTMaxes();
+    public TFloatArrayList getVolume();
     public float timePerSample();
 }

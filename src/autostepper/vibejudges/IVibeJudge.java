@@ -6,4 +6,6 @@ import java.util.Map;
 public interface IVibeJudge {
 
     public ArrayList<Map<VibeScore, Integer>> GetVibes(ArrayList<Map<SoundParameter, Object>> NoteEvents);
+
+    public String WhatsYourNameMrJudge();
 }

@@ -4,7 +4,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
-public class PopJudge implements IVibeJudge {
+public class ExcitedByEverythingJudge implements IVibeJudge {
+
+    // for slower tracks where not much is happening
 
     @Override
     public ArrayList<Map<VibeScore, Integer>> GetVibes(ArrayList<Map<SoundParameter, Object>> NoteEvents)
@@ -25,7 +27,7 @@ public class PopJudge implements IVibeJudge {
                 if ((boolean)map.get(SoundParameter.SNARE))
                 {
                     // Some standard sound or something to sustain deserves at least some vibe
-                    vibePower++;
+                    vibePower+=2;
                 }
                 
                 if ((boolean)map.get(SoundParameter.BEAT))
@@ -37,12 +39,23 @@ public class PopJudge implements IVibeJudge {
                 if ((boolean)map.get(SoundParameter.BEAT) && (boolean)map.get(SoundParameter.KICKS) && !(boolean)map.get(SoundParameter.HALF_BEAT))
                 {
                     // If it's kicks, on beat, without half-beat, that sounds like a good candidate for jump, that sounds like good vibe
-                    vibePower++;
+                    vibePower+=2;
                 }
 
-                if ((float)map.get(SoundParameter.VOLUME) > 0.8f)
+                if ((float)map.get(SoundParameter.VOLUME) > 0.4f)
                 {
                     // That's some loud sound right there, give it some vibe
+                    vibePower++;
+                }
+                if ((float)map.get(SoundParameter.VOLUME) > 0.8f)
+                {
+                    // That's some loud sound right there, give it some more vibe
+                    vibePower++;
+                }
+                
+                if ((float)map.get(SoundParameter.VOLUME) > 0.9f)
+                {
+                    // That's some loud sound right there, give it some more vibe
                     vibePower++;
                 }
 
@@ -64,10 +77,9 @@ public class PopJudge implements IVibeJudge {
         }
         return NoteVibes;
     }
-
+    
     @Override
     public String WhatsYourNameMrJudge() {
-        return "My name is Jeff. 21st pop song finalists.";
+        return "I'm so excited I forgot my name.";
     }
-    
 }

@@ -2,9 +2,11 @@ package autostepper.soundprocessing;
 
 import java.io.File;
 
+import autostepper.AutoStepper;
 import autostepper.misc.Averages;
 import autostepper.misc.Utils;
 import autostepper.vibejudges.SoundParameter;
+import ddf.minim.AudioSample;
 import ddf.minim.Minim;
 import ddf.minim.MultiChannelBuffer;
 import ddf.minim.analysis.BeatDetect;
@@ -22,6 +24,7 @@ public class CExperimentalSoundProcessor implements ISoundProcessor
     private float bpm;
     private TFloatArrayList MidFFTAmount;
     private TFloatArrayList MidFFTMaxes;
+    private TFloatArrayList volume;
     private float timePerSample;
 
     public void ProcessMusic(Minim minimLib, File filename, float songLengthLimitSeconds, final TFloatArrayList[] manyTimes, final TFloatArrayList[] fewTimes)
@@ -68,11 +71,32 @@ public class CExperimentalSoundProcessor implements ISoundProcessor
         }
         MidFFTAmount = new TFloatArrayList();
         MidFFTMaxes = new TFloatArrayList();
-
+        volume = new TFloatArrayList();
+        float maxVolume = 0f;
         float largestAvg = 0f, largestMax = 0f;
         int lowFreq = fft.freqToIndex(300f);
         int highFreq = fft.freqToIndex(3000f);
-        for (int chunkIdx = 0; chunkIdx < totalChunks; ++chunkIdx) {
+        for (int chunkIdx = 0; chunkIdx < totalChunks; ++chunkIdx)
+        {
+            if( AutoStepper.INDICATOR && chunkIdx == 50)
+            {
+                // Section to playback music
+                AudioSample fullSong = AutoStepper.minimLib.loadSample(filename.getAbsolutePath());
+                stream.getMillisecondLength();
+                fullSong.trigger();
+                long millis = System.currentTimeMillis();
+
+                long songLentgthToPlay = ((stream.getMillisecondLength() * chunkIdx) / totalChunks);
+                System.out.println("Would play for : " + songLentgthToPlay);
+                while (System.currentTimeMillis() - millis < songLentgthToPlay)
+                {
+                    // still play
+                }
+                fullSong.stop();
+                fullSong.close();
+            }
+
+
             stream.read(buffer);
             float[] data = buffer.getChannel(0);
             float time = chunkIdx * timePerSample;
@@ -113,14 +137,28 @@ public class CExperimentalSoundProcessor implements ISoundProcessor
                 fewTimes[SoundParameter.SNARE.value()].add(time);
             if (beatDetectSoundLowSensitivity.isOnset())
                 fewTimes[SoundParameter.BEAT.value()].add(time);
+
+            float rms = 0f;
+            float[] samples = buffer.getChannel(0);
+            for (float s : samples) {
+                rms += s * s;
+            }
+            float currVolume = (float) Math.sqrt(rms / samples.length);
+            volume.add(currVolume);
+            if (currVolume > maxVolume)
+            {
+                maxVolume = currVolume;
+            }
         }
         System.out.println("Loudest midrange average to normalize to 1: " + largestAvg);
         System.out.println("Loudest midrange maximum to normalize to 1: " + largestMax);
         float scaleBy = 1f / largestAvg;
         float scaleMaxBy = 1f / largestMax;
+        float scaleVolume = 1f / maxVolume;
         for (int i = 0; i < MidFFTAmount.size(); i++) {
             MidFFTAmount.replace(i, MidFFTAmount.get(i) * scaleBy);
             MidFFTMaxes.replace(i, MidFFTMaxes.get(i) * scaleMaxBy);
+            volume.replace(i, volume.get(i) * scaleVolume);
         }
 
         // calculate differences between percussive elements,
@@ -159,6 +197,11 @@ public class CExperimentalSoundProcessor implements ISoundProcessor
     @Override
     public TFloatArrayList GetMidFFTAmount() {
         return MidFFTAmount;
+    }
+
+    @Override
+    public TFloatArrayList getVolume() {
+        return volume;
     }
 
     @Override

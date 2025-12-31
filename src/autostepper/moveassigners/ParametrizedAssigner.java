@@ -4,16 +4,31 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
+import autostepper.moveassigners.steporganizer.Foot;
+import autostepper.moveassigners.steporganizer.StepOrganizer;
 import autostepper.vibejudges.VibeScore;
 
-public class PopStepAssigner extends CStepAssigner {
+public class ParametrizedAssigner extends CStepAssigner {
+
+    private int jumpThreshold;
+    private int tapThreshold;
+    private int sustainThreshold;
+
+    public ParametrizedAssigner(int jumpThreshold, int tapThreshold, int sustainThreshold) {
+        super("Parametrized assigned jumpsThr: " + jumpThreshold + " tapThr: " + tapThreshold + " sustainThr: " + sustainThreshold);
+        assert(tapThreshold < jumpThreshold);
+        this.jumpThreshold = jumpThreshold;
+        this.tapThreshold = tapThreshold;
+        this.sustainThreshold = sustainThreshold;
+    }
 
     @Override
     public ArrayList<ArrayList<Character>> AssignMoves(ArrayList<Map<VibeScore, Integer>> NoteVibes,
             SimfileDifficulty difficulty, float totalTime)
     {
-        reset();
+        StepOrganizer stepOrganizer = new StepOrganizer();
         ArrayList<ArrayList<Character>> NoteMoves = new ArrayList<>();
         // Here it will work in context windows
         // To start with something, it will search for patterns of 3 and 4 combos
@@ -21,6 +36,15 @@ public class PopStepAssigner extends CStepAssigner {
         int numberOfRows = NoteVibes.size();
         for (int i = 0; i < numberOfRows; i++)
         {
+            Optional<ArrayList<Character>> previousLine;
+            if (i > 0)
+            {
+                previousLine = Optional.of(NoteMoves.get(i - 1));
+            }
+            else
+            {
+                previousLine = Optional.empty();
+            }
             List<Integer> actions = new ArrayList<>();
 
             Map<VibeScore, Integer> previousPreviousVibe = getVibe(NoteVibes, i, -2);
@@ -29,9 +53,9 @@ public class PopStepAssigner extends CStepAssigner {
             Map<VibeScore, Integer> nextVibe = getVibe(NoteVibes, i, 1);
             Map<VibeScore, Integer> nextNextVibe = getVibe(NoteVibes, i, 2);
 
-            if (currentVibe.get(VibeScore.POWER) > 2)
+            if (currentVibe.get(VibeScore.POWER) >= jumpThreshold)
             {
-                if ((i + 1 <= numberOfRows && (nextVibe.get(VibeScore.POWER) < 2) && (nextNextVibe.get(VibeScore.POWER) < 2)))
+                if ((nextVibe.get(VibeScore.POWER) < jumpThreshold) && (nextNextVibe.get(VibeScore.POWER) < jumpThreshold))
                 {
                     actions.add(JUMP);
                 }
@@ -40,11 +64,11 @@ public class PopStepAssigner extends CStepAssigner {
                     actions.add(TAP);
                 }
             }
-            else if (currentVibe.get(VibeScore.POWER) == 1)
+            else if (currentVibe.get(VibeScore.POWER) >= tapThreshold)
             {
                 actions.add(TAP);
             }
-            if (currentVibe.get(VibeScore.SUSTAIN) > 0)
+            if (currentVibe.get(VibeScore.SUSTAIN) >= sustainThreshold)
             {
                 if (actions.contains(JUMP))
                 {
@@ -63,23 +87,25 @@ public class PopStepAssigner extends CStepAssigner {
 
             boolean anyHolds = false;
             // First maintain holds if there are any
-            anyHolds = maintainHolds(NoteMoves, i, actions, arrowLine, anyHolds);
+            anyHolds = maintainHolds(stepOrganizer, NoteMoves, i, actions, arrowLine, anyHolds);
             
-            if (!anyHolds && (actions.contains(ACTION_HOLD) || actions.contains(DOUBLE_HOLD)))
+            if (!anyHolds)
             {
                 // Start holding
-                footLocked = true;
-                ArrowPosition stepPosition = getAvailableArrow(arrowLine);
-                arrowLine.set(stepPosition.value(), HOLD);
-                SwitchFoot();
-
-                if (actions.contains(DOUBLE_HOLD))
+                if (actions.contains(ACTION_HOLD))
                 {
-                    // Start holding
-                    footLocked = true;
-                    stepPosition = getAvailableArrow(arrowLine);
-                    arrowLine.set(stepPosition.value(), HOLD);
-                    SwitchFoot();
+                    ArrayList<ArrowPosition> stepPosition = stepOrganizer.getAvailableArrow(1, arrowLine, previousLine, true);
+                    for (ArrowPosition arrowPosition : stepPosition) {
+                        arrowLine.set(arrowPosition.value(), HOLD);
+                    }
+                }
+                else if (actions.contains(DOUBLE_HOLD))
+                {
+                    // For double hold, we can consider nothing locked as you have to use hands anyways
+                    ArrayList<ArrowPosition> stepPosition = stepOrganizer.getAvailableArrow(2, arrowLine, previousLine, false);
+                    for (ArrowPosition arrowPosition : stepPosition) {
+                        arrowLine.set(arrowPosition.value(), HOLD);
+                    }
                 }
             }
 
@@ -104,35 +130,20 @@ public class PopStepAssigner extends CStepAssigner {
                 arrows = 1;
             }
 
-            while(arrows > 0)
+            ArrayList<ArrowPosition> stepPositions;
+            if (i > 0)
             {
-                ArrowPosition stepPosition;
-
-                stepPosition = ArrowPosition.fromValue(rand.nextInt(4));
-                if( arrowLine.get(stepPosition.value()) != EMPTY)
-                {
-                    continue; // Already busy
-                }
-                if(i - 1 >= 0 && (NoteMoves.get(i - 1).get(stepPosition.value()) == HOLD || NoteMoves.get(i - 1).get(stepPosition.value()) == KEEP_HOLDING))
-                {
-                    // Already holds
-                    continue;
-                }
-                else if ((lastUsedFoot == Foot.LEFT && leftFoot == ArrowPosition.DOWN && stepPosition == ArrowPosition.LEFT)
-                    || (lastUsedFoot == Foot.RIGHT && rightFoot == ArrowPosition.DOWN && stepPosition == ArrowPosition.RIGHT)
-                    || (lastUsedFoot == Foot.LEFT && leftFoot == ArrowPosition.UP && stepPosition == ArrowPosition.LEFT)
-                    || (lastUsedFoot == Foot.RIGHT && rightFoot == ArrowPosition.UP && stepPosition == ArrowPosition.RIGHT))
-                {
-                    continue; // Avoid crossovers, for now
-                }
-                else
-                {
-                    SwitchFoot();
-                    arrowLine.set(stepPosition.value(), STEP);
-                }
-                
-                arrows--;
+                stepPositions = stepOrganizer.getAvailableArrow(arrows, arrowLine, previousLine, false);
             }
+            else
+            {
+                stepPositions = stepOrganizer.getAvailableArrow(arrows, arrowLine, previousLine, false);
+            }
+
+            for (ArrowPosition arrowPosition : stepPositions) {
+                arrowLine.set(arrowPosition.value(), STEP);
+            }
+
             NoteMoves.add(arrowLine);
         }
         return NoteMoves;
@@ -148,7 +159,7 @@ public class PopStepAssigner extends CStepAssigner {
         return count;
     }
 
-    private boolean maintainHolds(ArrayList<ArrayList<Character>> NoteMoves, int i, List<Integer> actions,
+    private boolean maintainHolds(StepOrganizer stepOrganizer, ArrayList<ArrayList<Character>> NoteMoves, int i, List<Integer> actions,
             ArrayList<Character> arrowLine, boolean anyHolds) {
         if (i - 1 >= 0)
         {
@@ -164,7 +175,7 @@ public class PopStepAssigner extends CStepAssigner {
                     else
                     {
                         arrowLine.set(j, STOP);
-                        footLocked = false;
+                        stepOrganizer.unlock(ArrowPosition.fromValue(j));
                     }
                 }
                 if (NoteMoves.get(i - 1).get(j) == KEEP_HOLDING)
@@ -177,7 +188,7 @@ public class PopStepAssigner extends CStepAssigner {
                     else
                     {
                         arrowLine.set(j, STOP);
-                        footLocked = false;
+                        stepOrganizer.unlock(ArrowPosition.fromValue(j));
                     }
                 }
             }

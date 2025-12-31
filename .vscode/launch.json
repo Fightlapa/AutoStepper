@@ -44,8 +44,9 @@
                          "HipHop-Aylex-GoodDays(freetouse.com).mp3",
                          "Electro-Aylex-TurnItLouder(freetouse.com).mp3",
                          "Disco-Burgundy-DreamsofTomorrow(freetouse.com).mp3",
-                         "DontAskWhatTheHeckIsThat.mp3"],
-            "default": "Electro-Aylex-TurnItLouder(freetouse.com).mp3"
+                         "DontAskWhatTheHeckIsThat.mp3",
+                         "Abracadabra.mp3"],
+            "default": "Abracadabra.mp3"
         },
         {
             "id": "out_dir",

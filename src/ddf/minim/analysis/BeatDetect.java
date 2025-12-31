@@ -451,17 +451,27 @@ public class BeatDetect
 	 */
 	public boolean isSnare(boolean strict)
 	{
+		int MINIMUM_LOW = 8;
 		if (algorithm == SOUND_ENERGY)
 		{
 			return false;
 		}
-		int lower = 8 >= spect.avgSize() ? spect.avgSize() : 8;
-		int upper = spect.avgSize() - 1;
-		int thresh = (upper - lower) / 3;
-		if (strict)
+		int lower;
+		if (spect.avgSize() < MINIMUM_LOW)
 		{
-			thresh += 1;
+			lower = spect.avgSize();
 		}
+		else
+		{
+			lower = MINIMUM_LOW;
+		}
+		int upper = spect.avgSize() - 1;
+		// int thresh = 3;
+		int thresh = (upper - lower) / (strict ? 2 : 3);
+		// if (strict)
+		// {
+		// 	thresh += 1;
+		// }
 		return isRange(lower, upper, thresh);
 	}
 

@@ -17,6 +17,8 @@ import autostepper.moveassigners.SimfileDifficulty;
 import autostepper.soundprocessing.CExperimentalSoundProcessor;
 import autostepper.soundprocessing.CStandardSoundProcessor;
 import autostepper.soundprocessing.ISoundProcessor;
+import autostepper.useractions.BPMOffset;
+import autostepper.useractions.UserActions;
 import autostepper.vibejudges.SoundParameter;
 
 /**
@@ -99,7 +101,6 @@ public class AutoStepper {
         USETAPPER = getArg(args, "tap", "false").equals("true");
         PREVIEW_DETECTION = getArg(args, "preview", "false").equals("true");
         TAPSYNC = Double.parseDouble(getArg(args, "tapsync", "-0.11"));
-        HARDMODE = getArg(args, "hard", "false").equals("true");
         UPDATESM = getArg(args, "updatesm", "false").equals("true");
         File inputFile = new File(input);
 
@@ -136,54 +137,12 @@ public class AutoStepper {
         return duration;
     }
 
-    public float getBestOffset(float timePerBeat, TFloatArrayList times, float groupBy) {
+    public static float getBestOffset(float timePerBeat, TFloatArrayList times, float groupBy) {
         TFloatArrayList offsets = new TFloatArrayList();
         for (int i = 0; i < times.size(); i++) {
             offsets.add(times.getQuick(i) % timePerBeat);
         }
         return Averages.getMostCommonPhr00t(offsets, groupBy, false);
-    }
-
-
-    public static float tappedOffset;
-
-    public int getTappedBPM(String filename) {
-        // now we load the whole song so we don't have to worry about streaming a
-        // variable mp3 with timing inaccuracies
-        System.out.println("Loading whole song for tapping...");
-        AudioSample fullSong = minimLib.loadSample(filename);
-        System.out.println(
-                "\n********************************************************************\n\nPress [ENTER] to start song, then press [ENTER] to tap to the beat.\nIt will complete after 30 entries.\nDon't worry about hitting the first beat, just start anytime.\n\n********************************************************************");
-        TFloatArrayList positions = new TFloatArrayList();
-        Scanner in = new Scanner(System.in);
-        try {
-            in.nextLine();
-        } catch (Exception e) {
-        }
-        // get the most accurate start time as possible
-        long nano = System.nanoTime();
-        fullSong.trigger();
-        nano = (System.nanoTime() + nano) / 2;
-        try {
-            for (int i = 0; i < 30; i++) {
-                in.nextLine();
-                // get two playtime values & average them together for accuracy
-                long now = System.nanoTime();
-                // calculate the time difference
-                // we note a consistent 0.11 second delay in input to song here
-                double time = (double) ((now - nano) / 1000000000.0) + TAPSYNC;
-                positions.add((float) time);
-                System.out.println("#" + positions.size() + "/30: " + time + "s");
-            }
-        } catch (Exception e) {
-        }
-        fullSong.stop();
-        fullSong.close();
-        float avg = ((positions.getQuick(positions.size() - 1) - positions.getQuick(0)) / (positions.size() - 1));
-        int BPM = (int) Math.floor(60f / avg);
-        float timePerBeat = 60f / BPM;
-        tappedOffset = -getBestOffset(timePerBeat, positions, 0.1f);
-        return BPM;
     }
 
     void analyzeUsingAudioRecordingStream(File filename, float songLengthLimitSeconds, String outputDir) {
@@ -199,9 +158,10 @@ public class AutoStepper {
 
         float BPM = 0f, startTime = 0f, timePerBeat = 0f;
         if (USETAPPER) {
-            BPM = getTappedBPM(filename.getAbsolutePath());
+            BPMOffset bpmOffset = UserActions.getTappedBPM(filename.getAbsolutePath());
+            BPM = bpmOffset.BPM();
             timePerBeat = 60f / BPM;
-            startTime = tappedOffset;
+            startTime = bpmOffset.offset();
         } else if (UPDATESM) {
             File smfile = SMGenerator.getSMFile(filename, outputDir);
             if (smfile.exists()) {
@@ -250,13 +210,11 @@ public class AutoStepper {
         // start making the SM
         BufferedWriter smfile = SMGenerator.GenerateSM(BPM, startTime, filename, outputDir);
 
-        if (HARDMODE)
-            System.out.println("Hard mode enabled! Extra steps for you! :-O");
-
         StepGenerator newStepGenerator = new StepGenerator();
 
         TFloatArrayList MidFFTMaxes = soundProcessor.GetMidFFTMaxes();
         TFloatArrayList MidFFTAmount = soundProcessor.GetMidFFTAmount();
+        TFloatArrayList volume = soundProcessor.getVolume();
         float timePerSample = soundProcessor.timePerSample();
 
         // SMGenerator.AddNotes(smfile, SMGenerator.Beginner,
@@ -271,10 +229,10 @@ public class AutoStepper {
         // MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, seconds,
         // false));
 
-        String originalNotes = OgStepGenerator.GenerateNotes(2, HARDMODE ? 2 : 4, manyTimes, fewTimes, MidFFTAmount,
-                MidFFTMaxes, timePerSample, timePerBeat, startTime, songLengthLimitSeconds, false);
-        String newNotes = newStepGenerator.GenerateNotes(filename.getAbsolutePath(), SimfileDifficulty.HARD, 2,
-                fewTimes, MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, songLengthLimitSeconds, false);
+        // String originalNotes = OgStepGenerator.GenerateNotes(2, 2, manyTimes, fewTimes, MidFFTAmount,
+        //         MidFFTMaxes, timePerSample, timePerBeat, startTime, songLengthLimitSeconds, false, volume);
+        String newNotes = newStepGenerator.GenerateNotes(filename.getAbsolutePath(), SimfileDifficulty.HARD, 4,
+                fewTimes, MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, songLengthLimitSeconds, false, volume);
 
         SMGenerator.AddNotes(smfile, SMGenerator.Hard, newNotes);
         // SMGenerator.AddNotes(smfile, SMGenerator.Hard,

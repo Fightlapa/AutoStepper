@@ -22,6 +22,7 @@ public class CStandardSoundProcessor implements ISoundProcessor
     private float bpm;
     private TFloatArrayList MidFFTAmount;
     private TFloatArrayList MidFFTMaxes;
+    private TFloatArrayList volume;
     private float timePerSample;
 
     public void ProcessMusic(Minim minimLib, File filename, float songLengthLimitSeconds, final TFloatArrayList[] manyTimes, final TFloatArrayList[] fewTimes)
@@ -68,6 +69,7 @@ public class CStandardSoundProcessor implements ISoundProcessor
         }
         MidFFTAmount = new TFloatArrayList();
         MidFFTMaxes = new TFloatArrayList();
+        volume = new TFloatArrayList();
 
         float largestAvg = 0f, largestMax = 0f;
         int lowFreq = fft.freqToIndex(300f);
@@ -159,6 +161,11 @@ public class CStandardSoundProcessor implements ISoundProcessor
     @Override
     public TFloatArrayList GetMidFFTAmount() {
         return MidFFTAmount;
+    }
+
+    @Override
+    public TFloatArrayList getVolume() {
+        return volume;
     }
 
     @Override
