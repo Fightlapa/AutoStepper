@@ -1,0 +1,101 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'com.github.johnrengelman.shadow' version '7.1.2'
+}
+
+sourceCompatibility = JavaVersion.VERSION_17
+targetCompatibility = JavaVersion.VERSION_17
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src']
+        }
+    }
+    test {
+        resources {
+            srcDirs = ['test']
+        }
+    }
+}
+
+application {
+    mainClass = 'autostepper.AutoStepper'
+}
+
+repositories {
+    mavenCentral()
+    maven { url = uri('https://repo.clojars.org/') }
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
+
+    // Argument parsing
+    implementation 'net.sf.jopt-simple:jopt-simple:5.0.4'
+
+    // HTML parsing
+    implementation 'org.jsoup:jsoup:1.11.2'
+
+    // Trove collections (gnu.trove.*)
+    implementation 'net.sf.trove4j:trove4j:3.0.3'
+
+    // MP3 decoder (JLayer)
+    implementation 'javazoom:jlayer:1.0.1'
+
+    // JavaSound SPI – MP3
+    implementation 'com.googlecode.soundlibs:mp3spi:1.9.5-1'
+
+    // Tritonus (JavaSound implementation)
+    implementation 'com.googlecode.soundlibs:tritonus-share:0.3.7-2'
+    implementation 'org.clojars.automata:tritonus-aos:1.0.0'
+    implementation 'org.clojars.automata:jsminim:2.1.0'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+shadowJar {
+    archiveBaseName.set('AutoStepper')
+    archiveClassifier.set('')   // replaces normal jar
+
+    mergeServiceFiles()
+}
+
+// Make the distribution use the shadow JAR
+tasks.named('distZip') {
+    dependsOn shadowJar
+    // Optional: include shadowJar artifact instead of default jar
+    from(shadowJar.archiveFile) {
+        into('lib')
+    }
+}
+
+tasks.named('installDist') {
+    dependsOn shadowJar
+    from(shadowJar.archiveFile) {
+        into('lib')
+    }
+}
+
+tasks.named('distTar') {
+    enabled = false
+}
+
+tasks.named('startScripts') {
+    enabled = false
+}
+
+tasks.named('startShadowScripts') {
+    enabled = false
+}
+
+tasks.named('shadowDistTar') {
+    enabled = false
+}
+
+tasks.named('shadowDistZip') {
+    enabled = false
+}

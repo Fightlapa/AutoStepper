@@ -29,6 +29,7 @@ import ddf.minim.MultiChannelBuffer;
 import ddf.minim.spi.AudioStream;
 
 // This is our AudioInput!
+@SuppressWarnings("deprecation")
 final class JSAudioInput extends Thread
                         implements AudioStream
 {

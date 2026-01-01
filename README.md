@@ -28,7 +28,14 @@ updatesm=true will look for existing .sm stepfiles using the same filenames gene
 
 You can also use the output as a base to further edit & perfect songs, with AutoStepper doing most of the dirty work.
 
+
 I will add it is optimized for pad use, not keyboard use (e.g. difficulty isn't high enough).
+
+### JDK for development
+You can get it from adoptium.net, in case you work on Windows
+
+### Minim library
+All credits for processing to author of: https://github.com/ddf/Minim/tree/main
 
     Phr00t
 

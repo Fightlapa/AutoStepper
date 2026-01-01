@@ -148,9 +148,13 @@ public class AudioPlayer extends AudioSource implements Playable
     */
 	public void loop(int num)
 	{
-		// if we were paused, we need to grab the current state 
-		// because calling loop totally resets it
-		if ( isPaused )
+		// if we were paused, we need to grab the current state because calling loop totally resets it.
+		// Issue #72: if the recording is currently playing, we also need to do this,
+		// otherwise we start the loop over, which contradicts the above documentation.
+		//
+		// If this has never been paused before and the stream isn't playing,
+		// then people probably will expect the file to start playing from the loopStart, not from the beginning.
+		if ( isPaused || recording.isPlaying() )
 		{
 			int pos = recording.getMillisecondPosition();
 			recording.loop( num );
@@ -233,8 +237,8 @@ public class AudioPlayer extends AudioSource implements Playable
     * the beginning. This will not change the play state. If an error
     * occurs while trying to cue, the position will not change. 
     * If you try to cue to a negative position or to a position 
-    * that is greater than <code>length()</code>, the amount will be clamped 
-    * to zero or <code>length()</code>.
+    * that is greater than a non-negative <code>length()</code>, 
+    * the amount will be clamped to zero or <code>length()</code>.
     * 
     * @shortdesc Sets the position to <code>millis</code> milliseconds from
     * the beginning.
@@ -250,45 +254,47 @@ public class AudioPlayer extends AudioSource implements Playable
 	public void cue(int millis)
 	{
 		if (millis < 0)
-    {
+	    {
 			millis = 0;
-    }
-    else if (millis > length())
-    {
-			millis = length();
-    }
+	    }
+	    else	    	
+	    {
+	    	// only clamp millis to the length of the file if the length is known.
+	    	// otherwise we will try to skip what is asked and count on the underlying stream to handle it.
+	    	int len = recording.getMillisecondLength();
+	    	if (len >= 0 && millis > len)
+	    	{
+	    		millis = len;
+	    	}
+	    }
 		recording.setMillisecondPosition(millis);
 	}
 
-	  /**
-	   * Skips <code>millis</code> milliseconds from the current position. 
-	   * <code>millis</code> can be negative, which will make this skip backwards. 
-	   * If the skip amount would result in a negative position or a position that is greater than 
-	   * <code>length()</code>, the new position will be clamped to zero or 
-	   * <code>length()</code>.
-	   * 
-	   * @shortdesc Skips <code>millis</code> milliseconds from the current position.
-	   * 
-	   * @param millis 
-	   * 			int: how many milliseconds to skip, sign indicates direction
-	   * 
-	   * @example AudioPlayer/skip
-	   * 
-	   * @related AudioPlayer
-	   */
+	/**
+	 * Skips <code>millis</code> milliseconds from the current position. 
+	 * <code>millis</code> can be negative, which will make this skip backwards. 
+	 * If the skip amount would result in a negative position or a position that is greater than 
+	 * a non-negative <code>length()</code>, the new position will be clamped to zero or <code>length()</code>.
+	 * 
+	 * @shortdesc Skips <code>millis</code> milliseconds from the current position.
+	 * 
+	 * @param millis 
+	 * 			int: how many milliseconds to skip, sign indicates direction
+	 * 
+	 * @example AudioPlayer/skip
+	 * 
+	 * @related AudioPlayer
+	 */
 	public void skip(int millis)
 	{
 		int pos = position() + millis;
-		if (pos < 0)
+		if ( pos < 0 )
 		{
 			pos = 0;
 		}
-		else if (pos > length())
-		{
-			pos = length();
-		}
-		Minim.debug("AudioPlayer.skip: skipping " + millis + " milliseconds, new position is " + pos);
-		recording.setMillisecondPosition(pos);
+		
+		Minim.debug("AudioPlayer.skip: attempting to skip " + millis + " milliseconds, to position " + pos);
+		cue(pos);
 	}
 
    /**
@@ -336,22 +342,70 @@ public class AudioPlayer extends AudioSource implements Playable
 	}
 
    /**
-    * Sets the loop points used when looping.
+    * Sets the beginning and end of the section to loop when looping.
+    * These should be between 0 and the length of the file.
+    * If <code>end</code> is larger than the length of the file,
+    * the end of the loop will be set to the end of the file.
+    * If the length of the file is unknown and <end> is positive,
+    * it will be used directly.
+    * If <code>end</code> is negative, the end of the loop 
+    * will be set to the end of the file.
+    * If <code>begin</code> is greater than <code>end</code> 
+    * (unless <code>end</code> is negative), it will be clamped
+    * to one millisecond before <code>end</code>.
     * 
-    * @param start 
-    * 		int: the start of the loop in milliseconds
-    * @param stop 
-    * 		int: the end of the loop in milliseconds
+    * @param begin 
+    * 		int: the beginning of the loop in milliseconds
+    * @param end 
+    * 		int: the end of the loop in milliseconds, or -1 to set it to the end of the file
     * 
     * @example AudioPlayer/setLoopPoints
     * 
+    * @related loop ( )
+    * @related getLoopBegin ( )
+    * @related getLoopEnd ( )
     * @related AudioPlayer
     */
-	public void setLoopPoints(int start, int stop)
+	public void setLoopPoints(int begin, int end)
 	{
-		recording.setLoopPoints(start, stop);
-
+		recording.setLoopPoints(begin, end);
 	}
+	
+	/**
+	 * Gets the current millisecond position of the beginning of the looped section.
+	 * 
+	 * @return 
+	 * 		int: the beginning of the looped section in milliseconds
+	 * 
+	 * @example AudioPlayer/setLoopPoints
+	 * 
+	 * @related setLoopPoints ( )
+	 * @related loop ( )
+	 * @related AudioPlayer
+	 * 
+	 */
+	public int getLoopBegin()
+	{
+		return recording.getLoopBegin();
+	}
+
+	/**
+	 * Gets the current millisecond position of the end of the looped section.
+	 * This can be -1 if the length is unknown and <code>setLoopPoints</code> has never been called.
+	 * 
+	 * @return 
+	 * 		int: the end of the looped section in milliseconds
+	 * 
+	 * @example AudioPlayer/setLoopPoints
+	 * 
+	 * @related setLoopPoints ( )
+	 * @related loop ( )
+	 * @related AudioPlayer
+	 */
+	public int getLoopEnd()
+	{
+		return recording.getLoopEnd();
+	}	
 	
 	/**
 	 * Release the resources associated with playing this file.

@@ -23,6 +23,7 @@ import java.util.Arrays;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Control;
 import javax.sound.sampled.SourceDataLine;
 
@@ -35,6 +36,7 @@ import ddf.minim.Minim;
 import ddf.minim.MultiChannelBuffer;
 import ddf.minim.spi.AudioRecordingStream;
 
+@SuppressWarnings("deprecation")
 abstract class JSBaseAudioRecordingStream implements Runnable,
         AudioRecordingStream
 {
@@ -118,7 +120,14 @@ abstract class JSBaseAudioRecordingStream implements Runnable,
         play = false;
         numLoops = 0;
         loopBegin = 0;
-        loopEnd = (int)AudioUtils.millis2BytesFrameAligned( msLen, format );
+        if (msLen != AudioSystem.NOT_SPECIFIED)
+        {
+        	loopEnd = (int)AudioUtils.millis2BytesFrameAligned( msLen, format );
+        }
+        else
+        {
+        	loopEnd = AudioSystem.NOT_SPECIFIED;
+        }
         
         silence = new float[bufferSize];
         iothread = null;
@@ -239,10 +248,36 @@ abstract class JSBaseAudioRecordingStream implements Runnable,
         
         return bytesRead;
     }
+    
+    // update the loop state and return true if we reset our position to the beginning of the loop
+    private boolean updateLoop()
+    {
+        if ( loop && numLoops == 0 )
+        {
+            loop = false;
+            pause();
+        }
+        else if ( loop )
+        {
+        	//System.out.println("Returning to loopBegin because else if loop");
+        	if ( numLoops != Minim.LOOP_CONTINUOUSLY )
+        	{
+        		numLoops--;
+        	}
+            setMillisecondPosition( loopBegin );
+            return true;
+        }
+        
+        return false;
+    }
 
     private void readBytesLoop()
     {
-        int toLoopEnd = loopEnd - totalBytesRead;
+    	// start with silence
+    	Arrays.fill(rawBytes, (byte)0);
+    	
+    	// if the loop end isn't specified, that probably means we are dealing with an internet stream.
+        int toLoopEnd = loopEnd == AudioSystem.NOT_SPECIFIED ? rawBytes.length : loopEnd - totalBytesRead;
         if ( toLoopEnd <= 0 )
         {
         	//System.out.println("Returning to loopBegin because toLoopEnd <= 0");
@@ -257,40 +292,30 @@ abstract class JSBaseAudioRecordingStream implements Runnable,
         		setMillisecondPosition( loopBegin );
         		readBytesLoop();
         	}
-        	else
-        	{
-        		Arrays.fill(rawBytes, (byte)0);
-        	}
             return;
         }
+        
+        // end of loop is closer than length of bytes array,
+        // so read only as much as we need, then do loop logic
         if ( toLoopEnd < rawBytes.length )
         {
             readBytesWrap( toLoopEnd, 0 );
-            if ( loop && numLoops == 0 )
+            // if we looped, fill the rest of the buffer
+            if ( updateLoop() )
             {
-                loop = false;
-                pause();
-            }
-            else if ( loop )
-            {
-            	//System.out.println("Returning to loopBegin because else if loop");
-            	if ( numLoops != Minim.LOOP_CONTINUOUSLY )
-            	{
-            		numLoops--;
-            	}
-                setMillisecondPosition( loopBegin );
-                readBytesWrap( rawBytes.length - toLoopEnd, toLoopEnd );
+            	readBytesWrap( rawBytes.length - toLoopEnd, toLoopEnd );
             }
         }
         else
         {
+        	// loop end is either further away than the length of our buffer, or it is unknown, so we try to read a full buffer       
             readBytesWrap( rawBytes.length, 0 );
         }
     }
 
     // read toRead bytes from ais into rawBytes.
     // we assume here that if we get to the end of the file
-    // that we should wrap around to the beginning
+    // that we should wrap around to loopStart
     private void readBytesWrap(int toRead, int offset)
     {
         int bytesRead = 0;
@@ -304,14 +329,13 @@ abstract class JSBaseAudioRecordingStream implements Runnable,
                 {
                     actualRead = ais.read( rawBytes, bytesRead + offset, toRead - bytesRead );
                 }
+                // if we reached EOF we update the loop logic and possibly continue
                 if ( -1 == actualRead )
                 {
-                	//System.out.println("!!!!!!! Looping with numLoops " + numLoops);
-                    setMillisecondPosition( 0 );
-                    if ( numLoops != Minim.LOOP_CONTINUOUSLY )
-                    {
-                        numLoops--;
-                    }
+                	if (!updateLoop())
+                	{
+                		break;
+                	}
                 }
                 else if ( actualRead == 0 )
                 {
@@ -327,7 +351,6 @@ abstract class JSBaseAudioRecordingStream implements Runnable,
                     totalBytesRead += actualRead;
                 }
             }
-
         }
         catch ( IOException ioe )
         {
@@ -391,7 +414,7 @@ abstract class JSBaseAudioRecordingStream implements Runnable,
         }
     }
 
-    private synchronized void process()
+	private synchronized void process()
     {
         synchronized ( buffer )
         {
@@ -497,30 +520,69 @@ abstract class JSBaseAudioRecordingStream implements Runnable,
     // without having to make a new AudioInputStream
     public void setLoopPoints(int start, int stop)
     {
-        if ( start <= 0 || start > stop )
+    	// first see if the end-point is in range and if not, clamp to the end of the file
+        int len = getMillisecondLength();
+        if ( stop <= 0 )
         {
+            // if stop is negative, we set the loop point to the end of the file
+        	if ( len == AudioSystem.NOT_SPECIFIED )
+        	{
+        		loopEnd = AudioSystem.NOT_SPECIFIED;
+        	}
+        	else
+        	{
+        		loopEnd = (int)AudioUtils.millis2BytesFrameAligned(len, format); 
+        	}
+        	
+        	stop = len;
+        }
+        else
+        {
+        	// if stop is positive, we clamp it to the length of the file, if the length is known
+        	if ( len != AudioSystem.NOT_SPECIFIED && stop > len )
+        	{
+        		stop = len;
+        	}
+        	loopEnd = (int)AudioUtils.millis2BytesFrameAligned( stop, format );
+        }
+        
+        if ( start < 0 )
+        {
+            // if start is negative we clamp to the beginning of the file 
             loopBegin = 0;
         }
         else
         {
+        	// if start is positive we clamp it to stop
+        	if ( stop > 0 && start >= stop )
+        	{
+        		start = stop - 1;
+        	}
             loopBegin = start;
-        }
-        if ( stop <= getMillisecondLength() && stop > start )
-        {
-            loopEnd = (int)AudioUtils.millis2BytesFrameAligned( stop, format );
-        }
-        else
-        {
-            loopEnd = (int)AudioUtils.millis2BytesFrameAligned(
-                    getMillisecondLength(), format );
-        }
+        }       
+    }
+    
+    public int getLoopBegin()
+    {
+    	return loopBegin;
+    }
+    
+    public int getLoopEnd()
+    {
+    	if ( loopEnd != AudioSystem.NOT_SPECIFIED )
+    	{
+    		return (int)AudioUtils.bytes2Millis( loopEnd, format );
+    	}
+    	
+    	return AudioSystem.NOT_SPECIFIED;
     }
 
     public int getMillisecondPosition()
     {
         int pos = (int)AudioUtils.bytes2Millis( totalBytesRead, format );
-        // never report a position that is greater than the length of the stream
-        return Math.min( pos, getMillisecondLength() );
+        // never report a position that is greater than the length of the stream, unless the length of the stream is unknown
+        int length = getMillisecondLength();        
+        return length == AudioSystem.NOT_SPECIFIED ? pos : Math.min( pos, length );
     }
 
     public void setMillisecondPosition(int millis)

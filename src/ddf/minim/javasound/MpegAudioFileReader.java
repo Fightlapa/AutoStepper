@@ -335,8 +335,8 @@ class MpegAudioFileReader extends TAudioFileReader
 		try
 		{
 			Bitstream m_bitstream = new Bitstream(pis);
-			aff_properties.put("mp3.header.pos",
-										new Integer(m_bitstream.header_pos()));
+            int streamPos = m_bitstream.header_pos();
+            aff_properties.put("mp3.header.pos", new Integer(streamPos));
 			Header m_header = m_bitstream.readFrame();
 			if ( m_header == null )
 			{
@@ -376,10 +376,13 @@ class MpegAudioFileReader extends TAudioFileReader
 			{
 				throw new UnsupportedAudioFileException("Invalid FrameRate : " + FrameRate);
 			}
+			// remove header size from the length used to estimate total frames and duration
+            int tmpLength = mLength;
+            if ((streamPos > 0) && (mLength != AudioSystem.NOT_SPECIFIED) && (streamPos < mLength)) tmpLength = tmpLength - streamPos;
 			if (mLength != AudioSystem.NOT_SPECIFIED)
 			{
 				aff_properties.put("mp3.length.bytes", new Integer(mLength));
-				nTotalFrames = m_header.max_number_of_frames(mLength);
+                nTotalFrames = m_header.max_number_of_frames(tmpLength);
 				aff_properties.put("mp3.length.frames", new Integer(nTotalFrames));
 			}
 			BitRate = m_header.bitrate();
@@ -390,7 +393,7 @@ class MpegAudioFileReader extends TAudioFileReader
 			aff_properties.put("mp3.version.encoding", encoding.toString());
 			if (mLength != AudioSystem.NOT_SPECIFIED)
 			{
-				nTotalMS = Math.round(m_header.total_ms(mLength));
+                nTotalMS = Math.round(m_header.total_ms(tmpLength));
 				aff_properties.put("duration", new Long((long)nTotalMS * 1000L));
 			}
 			aff_properties.put("mp3.copyright", new Boolean(m_header.copyright()));
@@ -401,7 +404,8 @@ class MpegAudioFileReader extends TAudioFileReader
 			if (id3v2 != null)
 			{
 				aff_properties.put("mp3.id3tag.v2", id3v2);
-				//parseID3v2Frames(id3v2, aff_properties); // this just spams junk
+				parseID3v2Frames(id3v2, aff_properties);
+				id3v2.close();
 			}
 			if (TDebug.TraceAudioFileReader)
 				TDebug.out(m_header.toString());
@@ -437,7 +441,7 @@ class MpegAudioFileReader extends TAudioFileReader
 			inputStream.read(id3v1, 0, id3v1.length);
 			if ((id3v1[0] == 'T') && (id3v1[1] == 'A') && (id3v1[2] == 'G'))
 			{
-				//parseID3v1Frames(id3v1, aff_properties);
+				parseID3v1Frames(id3v1, aff_properties);
 			}
 		}
 		AudioFormat format = new MpegAudioFormat(encoding, (float)nFrequency,
@@ -465,6 +469,7 @@ class MpegAudioFileReader extends TAudioFileReader
 	/**
 	 * Returns AudioInputStream from file.
 	 */
+	@SuppressWarnings("resource")
 	public AudioInputStream getAudioInputStream(File file)
 			throws UnsupportedAudioFileException, IOException
 	{
@@ -517,6 +522,7 @@ class MpegAudioFileReader extends TAudioFileReader
 		if (isShout == true)
 		{
 			// Yes
+			@SuppressWarnings("resource")
 			IcyInputStream icyStream = new IcyInputStream(bInputStream);
 			icyStream.addTagParseListener(IcyListener.getInstance());
 			inputStream = icyStream;
@@ -528,6 +534,7 @@ class MpegAudioFileReader extends TAudioFileReader
 			if (metaint != null)
 			{
 				// Yes, it might be icecast 2 mp3 stream.
+				@SuppressWarnings("resource")
 				IcyInputStream icyStream = new IcyInputStream(bInputStream, metaint);
 				icyStream.addTagParseListener(IcyListener.getInstance());
 				inputStream = icyStream;
@@ -891,5 +898,6 @@ class MpegAudioFileReader extends TAudioFileReader
 				props.put("mp3.shoutcast.metadata." + key, value);
 			}
 		}
+		icy.close();
 	}
 }
