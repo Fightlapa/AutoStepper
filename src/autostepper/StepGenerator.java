@@ -27,7 +27,7 @@ import autostepper.vibejudges.SoundParameter;
 import autostepper.vibejudges.VibeScore;
 import autostepper.musiceventsdetector.StandardEventsDetector;
 import autostepper.soundprocessing.CExperimentalSoundProcessor;
-import autostepper.soundprocessing.ISoundProcessor;
+import autostepper.soundprocessing.Song;
 import autostepper.musiceventsdetector.DiffSensitiveEventsDetector;
 import autostepper.musiceventsdetector.PreciseDiffSensitiveEventsDetector;
 import ddf.minim.AudioSample;
@@ -38,7 +38,43 @@ import ddf.minim.AudioSample;
  */
 public class StepGenerator {
 
-    ISoundProcessor soundProcessor = new CExperimentalSoundProcessor();
+    CExperimentalSoundProcessor soundProcessor;
+    private float granularityModifier;
+    private float preciseGranularityModifier;
+    private ArrayList<IVibeJudge> judges;
+    private ArrayList<CStepAssigner> moveAssigners;
+
+    public StepGenerator(TFloatArrayList params)
+    {
+        granularityModifier = params.get(AlgorithmParameter.GRANULARITY_MODIFIER.value());
+        preciseGranularityModifier = params.get(AlgorithmParameter.PRECISE_GRANULARITY_MODIFIER.value());
+
+        judges = new ArrayList<>();
+
+        judges.add(new ParametrizedJudge(params.get(AlgorithmParameter.FIRST_VOLUME_THRESHOLD.value()),
+                                         params.get(AlgorithmParameter.SECOND_VOLUME_THRESHOLD.value()),
+                                        params.get(AlgorithmParameter.FFT_MAX_THRESHOLD.value())));
+                                        
+        // Just like with vibe coding :)
+        // Idea is to assign vibes if current note id drop-like, standard, or it's sustained which is a candidate for hold
+        // For now only checking if something should happen, not exactly on which arrow
+        // So that later on it could be assigned to exact arrow, so '0210' or '1002' etc.
+
+        // judges.add(new PopJudge());
+        // judges.add(new ExcitedByEverythingJudge());
+        // judges.add(new DeafToBeatJudge());
+
+        moveAssigners = new ArrayList<>();
+        // moveAssigners.add(new PopStepAssigner());
+        // moveAssigners.add(new LazyPopStepAssigner());
+        // moveAssigners.add(new MoreTapsAssigner());
+        int jumpThreshold = Math.round(params.get(AlgorithmParameter.JUMP_THRESHOLD.value()));
+        int tapThreshold = Math.round(params.get(AlgorithmParameter.TAP_THRESHOLD.value()));
+        int sustainThreshold = Math.round(params.get(AlgorithmParameter.SUSTAIN_THESHOLD.value()));
+        moveAssigners.add(new ParametrizedAssigner(jumpThreshold, tapThreshold, sustainThreshold));
+
+        soundProcessor = new CExperimentalSoundProcessor(params);
+    }
 
     static String redStep(int step) {
         // step: 0–9
@@ -145,25 +181,21 @@ public class StepGenerator {
         }
     }
     
-    public ArrayList<ArrayList<Character>> GenerateNotes(String filename, SimfileDifficulty difficulty, int stepGranularity,
+    public ArrayList<ArrayList<Character>> GenerateNotes(Song song, SimfileDifficulty difficulty, int stepGranularity,
                                        boolean allowMines, TFloatArrayList params)
-        {
+    {
         // collected song data
         final TFloatArrayList[] manyTimes = new TFloatArrayList[4];
         final TFloatArrayList[] fewTimes = new TFloatArrayList[4];
 
-        float songTime = Utils.getSongTime(filename);
-        soundProcessor.ProcessMusic(AutoStepper.minimLib, filename, songTime, manyTimes, fewTimes, params);
+        float songTime = song.getSongTime();
+        soundProcessor.ProcessMusic(song, manyTimes, fewTimes, params);
 
         TFloatArrayList FFTMaxes = soundProcessor.GetMidFFTMaxes();
         TFloatArrayList FFTAverages = soundProcessor.GetMidFFTAmount();
-        TFloatArrayList volume = soundProcessor.getVolume();
-        float timePerSample = soundProcessor.timePerSample();
+        TFloatArrayList volume = song.getVolume();
         float timePerBeat = soundProcessor.GetTimePerBeat();
         float startTime = soundProcessor.GetStartTime();
-
-        float granularityModifier = params.get(AlgorithmParameter.GRANULARITY_MODIFIER.value());
-        float preciseGranularityModifier = params.get(AlgorithmParameter.PRECISE_GRANULARITY_MODIFIER.value());
 
         // To gather infor about kicks, snares etc
         // It parses whole song, so that next steps can access context
@@ -176,7 +208,7 @@ public class StepGenerator {
             CMusicEventsDetector eventsDetector = new DiffSensitiveEventsDetector();
             // CMusicEventsDetector eventsDetector = new PreciseDiffSensitiveEventsDetector();
             
-            NoteEvents = eventsDetector.GetEvents(stepGranularity, timePerBeat, startTime, songTime, FFTAverages, FFTMaxes, volume, timePerSample, fewTimes, sustainFactor, granularityModifier, preciseGranularityModifier);
+            NoteEvents = eventsDetector.GetEvents(stepGranularity, timePerBeat, startTime, songTime, FFTAverages, FFTMaxes, volume, song.getTimePerSample(), fewTimes, sustainFactor, granularityModifier, preciseGranularityModifier);
 
             long sustains = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.SUSTAINED))).count();
             long kicks = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.KICKS))).count();
@@ -192,7 +224,7 @@ public class StepGenerator {
             {
                 if (AutoStepper.PREVIEW_DETECTION)
                 {
-                    preview(filename, NoteEvents, stepGranularity, timePerBeat, FFTAverages, FFTMaxes, volume, songTime);
+                    preview(song.getFilename(), NoteEvents, stepGranularity, timePerBeat, FFTAverages, FFTMaxes, volume, songTime);
                 }
                 break;
             }
@@ -216,33 +248,6 @@ public class StepGenerator {
         };
 
         // We'll try different algorithms, as for slower songs it's hard to get many arrows so we should decide to put arrow easier for those
-
-        // Just like with vibe coding :)
-        // Idea is to assign vibes if current note id drop-like, standard, or it's sustained which is a candidate for hold
-        // For now only checking if something should happen, not exactly on which arrow
-        // So that later on it could be assigned to exact arrow, so '0210' or '1002' etc.
-        ArrayList<IVibeJudge> judges = new ArrayList<>();
-
-        judges.add(new ParametrizedJudge(params.get(AlgorithmParameter.FIRST_VOLUME_THRESHOLD.value()),
-                                         params.get(AlgorithmParameter.SECOND_VOLUME_THRESHOLD.value()),
-                                        params.get(AlgorithmParameter.FFT_MAX_THRESHOLD.value())));
-        // judges.add(new PopJudge());
-        // judges.add(new ExcitedByEverythingJudge());
-        // judges.add(new DeafToBeatJudge());
-
-        ArrayList<CStepAssigner> moveAssigners = new ArrayList<>();
-        // moveAssigners.add(new PopStepAssigner());
-        // moveAssigners.add(new LazyPopStepAssigner());
-        // moveAssigners.add(new MoreTapsAssigner());
-        int jumpThreshold = Math.round(params.get(AlgorithmParameter.JUMP_THRESHOLD.value()));
-        int tapThreshold = Math.round(params.get(AlgorithmParameter.TAP_THRESHOLD.value()));
-        int sustainThreshold = Math.round(params.get(AlgorithmParameter.SUSTAIN_THESHOLD.value()));
-        moveAssigners.add(new ParametrizedAssigner(jumpThreshold, tapThreshold, sustainThreshold));
-        // moveAssigners.add(new ParametrizedAssigner(3, 1, 1));
-        // moveAssigners.add(new ParametrizedAssigner(3, 2, 1));
-        // moveAssigners.add(new ParametrizedAssigner(3, 2, 1));
-
-
         long currentMargin = 99999;
 
         ArrayList<ArrayList<Character>> AllarrowLines = null;

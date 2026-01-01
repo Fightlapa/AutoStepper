@@ -3,6 +3,7 @@ package autostepper.useractions;
 import java.util.Scanner;
 
 import autostepper.AutoStepper;
+import autostepper.misc.Utils;
 import ddf.minim.AudioSample;
 import gnu.trove.list.array.TFloatArrayList;
 
@@ -44,7 +45,7 @@ public class UserActions
         float avg = ((positions.getQuick(positions.size() - 1) - positions.getQuick(0)) / (positions.size() - 1));
         int BPM = (int) Math.floor(60f / avg);
         float timePerBeat = 60f / BPM;
-        float tappedOffset = -AutoStepper.getBestOffset(timePerBeat, positions, 0.1f);
+        float tappedOffset = -Utils.getBestOffset(timePerBeat, positions, 0.1f);
         return new BPMOffset(BPM, tappedOffset);
     }
 }

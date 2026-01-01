@@ -14,15 +14,9 @@ import java.util.Scanner;
 import autostepper.genetic.AlgorithmParameter;
 import autostepper.genetic.GeneticOptimizer;
 import autostepper.misc.Averages;
-import autostepper.misc.Utils;
-import autostepper.moveassigners.ParametrizedAssigner;
 import autostepper.moveassigners.SimfileDifficulty;
 import autostepper.smfile.SmFileParser;
-import autostepper.soundprocessing.CExperimentalSoundProcessor;
-import autostepper.soundprocessing.ISoundProcessor;
-import autostepper.useractions.BPMOffset;
-import autostepper.useractions.UserActions;
-import autostepper.vibejudges.SoundParameter;
+import autostepper.soundprocessing.Song;
 
 /**
  *
@@ -147,20 +141,11 @@ public class AutoStepper {
         return duration;
     }
 
-    public static float getBestOffset(float timePerBeat, TFloatArrayList times, float groupBy) {
-        TFloatArrayList offsets = new TFloatArrayList();
-        for (int i = 0; i < times.size(); i++) {
-            offsets.add(times.getQuick(i) % timePerBeat);
-        }
-        return Averages.getMostCommonPhr00t(offsets, groupBy, false);
-    }
-
     void analyzeUsingAudioRecordingStream(File filename, float songLengthLimitSeconds, String outputDir) {
 
         // String originalNotes = OgStepGenerator.GenerateNotes(2, 2, manyTimes, fewTimes, MidFFTAmount,
         //         MidFFTMaxes, timePerSample, timePerBeat, startTime, songLengthLimitSeconds, false, volume);
 
-        String newNotes = "";
         TFloatArrayList startingPoint = new TFloatArrayList();
 
         startingPoint.insert(AlgorithmParameter.JUMP_THRESHOLD.value(), 2.0f);
@@ -176,26 +161,30 @@ public class AutoStepper {
         startingPoint.insert(AlgorithmParameter.KICK_HIGH_FREQ.value(), 6f);
         startingPoint.insert(AlgorithmParameter.KICK_BAND_FREQ.value(), 2f);
         startingPoint.insert(AlgorithmParameter.SNARE_LOW_FREQ.value(), 8f);
-        startingPoint.insert(AlgorithmParameter.SNARE_HIGH_FREQ.value(), 40f);
-        startingPoint.insert(AlgorithmParameter.SNARE_BAND_FREQ.value(), 4f);
+        startingPoint.insert(AlgorithmParameter.SNARE_HIGH_FREQ.value(), 26f);
+        startingPoint.insert(AlgorithmParameter.SNARE_BAND_FREQ.value(), 6f);
         assert(startingPoint.size() == (AlgorithmParameter.SNARE_BAND_FREQ.value() + 1));
 
-        StepGenerator stepGenerator = new StepGenerator();
+        StepGenerator stepGenerator = new StepGenerator(startingPoint);
+        Song song = new Song(filename.getAbsolutePath());
+        String newNotes = "";
         if (TRAIN)
         {
             int STEP_GRANULARITY = 4;
             GeneticOptimizer geneticOptimizer = new GeneticOptimizer();
             TFloatArrayList optimalParameters = geneticOptimizer.optimize(STEP_GRANULARITY, startingPoint);
-            ArrayList<ArrayList<Character>> result = stepGenerator.GenerateNotes(filename.getAbsolutePath(), SimfileDifficulty.HARD, STEP_GRANULARITY,
+            ArrayList<ArrayList<Character>> result = stepGenerator.GenerateNotes(song, SimfileDifficulty.HARD, STEP_GRANULARITY,
                     false, optimalParameters);
             newNotes = SmFileParser.EncodeArrowLines(result, STEP_GRANULARITY);
         }
         else
         {
+            long jazzMusicStarts = System.currentTimeMillis();
             int STEP_GRANULARITY = 2;
-            ArrayList<ArrayList<Character>> result = stepGenerator.GenerateNotes(filename.getAbsolutePath(), SimfileDifficulty.HARD, STEP_GRANULARITY,
+            ArrayList<ArrayList<Character>> result = stepGenerator.GenerateNotes(song, SimfileDifficulty.HARD, STEP_GRANULARITY,
                     false, startingPoint);
             newNotes = SmFileParser.EncodeArrowLines(result, STEP_GRANULARITY);
+            System.out.println("Time elapsed: " + (System.currentTimeMillis() - jazzMusicStarts) / 1000f + "s");
         }
 
         float BPM = stepGenerator.getBPM();

@@ -91,7 +91,7 @@ public enum AlgorithmParameter {
             case KICK_BAND_FREQ:
                     return Optional.of(10);
             case SNARE_LOW_FREQ:
-                    return Optional.of(4);
+                    return Optional.of(14);
             case SNARE_HIGH_FREQ:
                     return Optional.of(40);
             case SNARE_BAND_FREQ:
@@ -113,13 +113,13 @@ public enum AlgorithmParameter {
             case KICK_LOW_FREQ:
                     return Optional.of(1);
             case KICK_HIGH_FREQ:
-                    return Optional.of(4);
+                    return Optional.of(3);
             case KICK_BAND_FREQ:
                     return Optional.of(1);
             case SNARE_LOW_FREQ:
                     return Optional.of(4);
             case SNARE_HIGH_FREQ:
-                    return Optional.of(20);
+                    return Optional.of(15);
             case SNARE_BAND_FREQ:
                     return Optional.of(1);
             default:

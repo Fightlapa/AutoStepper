@@ -49,4 +49,11 @@ public class Utils
         return songTime;
     }
 
+    public static float getBestOffset(float timePerBeat, TFloatArrayList times, float groupBy) {
+        TFloatArrayList offsets = new TFloatArrayList();
+        for (int i = 0; i < times.size(); i++) {
+            offsets.add(times.getQuick(i) % timePerBeat);
+        }
+        return Averages.getMostCommonPhr00t(offsets, groupBy, false);
+    }
 }

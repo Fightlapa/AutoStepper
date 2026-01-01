@@ -11,8 +11,7 @@ import autostepper.misc.Averages;
 import autostepper.misc.Utils;
 import autostepper.moveassigners.SimfileDifficulty;
 import autostepper.smfile.SmFileParser;
-import autostepper.soundprocessing.CExperimentalSoundProcessor;
-import autostepper.soundprocessing.ISoundProcessor;
+import autostepper.soundprocessing.Song;
 import autostepper.vibejudges.SoundParameter;
 import gnu.trove.list.array.TFloatArrayList;
 
@@ -85,8 +84,11 @@ public class GeneticOptimizer {
         ArrayList<Integer> abracadabraReference = SmFileParser.parseFile("Target/AbracadabraOut.sm");
         ArrayList<Integer> cheapThrillsReference = SmFileParser.parseFile("Target/CheapThrillsOut.sm");
 
-        ArrayList<Integer> abracadabraResult = getSongFingerprint("samples/Abracadabra.mp3", chromosome);
-        ArrayList<Integer> cheapResult = getSongFingerprint("samples/CheapThrills.mp3", chromosome);
+        Song bbracadabraSong = new Song("samples/Abracadabra.mp3");
+        Song cheapThrillsSong = new Song("samples/CheapThrills.mp3");
+
+        ArrayList<Integer> abracadabraResult = getSongFingerprint(bbracadabraSong, chromosome);
+        ArrayList<Integer> cheapResult = getSongFingerprint(cheapThrillsSong, chromosome);
         // float cheapDuration = Utils.getSongTime("samples/CheapThrills.mp3");
         // float cheapBPM = soundProcessor.ProcessMusic(AutoStepper.minimLib, "samples/CheapThrills.mp3", cheapDuration, manyTimes, fewTimes);
         // ArrayList<ArrayList<Character>> abracadabraResult = newStepGenerator.GenerateNotes("samples/CheapThrills.mp3", SimfileDifficulty.HARD, stepGranularity,
@@ -129,10 +131,10 @@ public class GeneticOptimizer {
         return totalDiffs;
     }
 
-    private ArrayList<Integer> getSongFingerprint(String inputFileName, float[] chromosome)
+    private ArrayList<Integer> getSongFingerprint(Song song, float[] chromosome)
     {
-        StepGenerator stepGenerator = new StepGenerator();
-        ArrayList<ArrayList<Character>> abracadabraArrows = stepGenerator.GenerateNotes(inputFileName, SimfileDifficulty.HARD, stepGranularity, false, new TFloatArrayList(chromosome));
+        StepGenerator stepGenerator = new StepGenerator(new TFloatArrayList(chromosome));
+        ArrayList<ArrayList<Character>> abracadabraArrows = stepGenerator.GenerateNotes(song, SimfileDifficulty.HARD, stepGranularity, false, new TFloatArrayList(chromosome));
         return SmFileParser.parseLines(abracadabraArrows);
     }
 
