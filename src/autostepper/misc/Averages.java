@@ -83,6 +83,10 @@ public class Averages {
 
     public static float getMostCommonFightlapa(TFloatArrayList inputArray, float threshold, boolean closestToInteger)
     {
+        if (inputArray.size() == 0)
+        {
+            return 0.0f;
+        }
         TFloatArrayList inputCopy = new TFloatArrayList(inputArray);
         int inputSize = inputCopy.size();
         inputCopy.sort();

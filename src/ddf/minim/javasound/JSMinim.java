@@ -186,13 +186,13 @@ public class JSMinim implements MinimServiceProvider
 	
 	void error(String s)
 	{
-		System.out.println("==== JavaSound Minim Error ====");
-		String[] lines = s.split("\n");
-		for(int i = 0; i < lines.length; i++)
-		{
-			System.out.println("==== " + lines[i]);
-		}
-		System.out.println();
+		// System.out.println("==== JavaSound Minim Error ====");
+		// String[] lines = s.split("\n");
+		// for(int i = 0; i < lines.length; i++)
+		// {
+		// 	System.out.println("==== " + lines[i]);
+		// }
+		// System.out.println();
 	}
 
 	public SampleRecorder getSampleRecorder(Recordable source, String fileName,

@@ -3,6 +3,7 @@ package autostepper.soundprocessing;
 import java.io.File;
 
 import autostepper.AutoStepper;
+import autostepper.genetic.AlgorithmParameter;
 import autostepper.misc.Averages;
 import autostepper.misc.Utils;
 import autostepper.vibejudges.SoundParameter;
@@ -26,14 +27,17 @@ public class CExperimentalSoundProcessor implements ISoundProcessor
     private TFloatArrayList MidFFTMaxes;
     private TFloatArrayList volume;
     private float timePerSample;
+    private float startTime = 0f;
+    private float timePerBeat = 0f;
 
-    public void ProcessMusic(Minim minimLib, File filename, float songLengthLimitSeconds, final TFloatArrayList[] manyTimes, final TFloatArrayList[] fewTimes)
+    public void ProcessMusic(Minim minimLib, String filename, float songLengthLimitSeconds, final TFloatArrayList[] manyTimes, final TFloatArrayList[] fewTimes, TFloatArrayList params)
     {
+        System.out.println("Processing sound");
         int fftSize = 512;
 
-        AudioRecordingStream stream = minimLib.loadFileStream(filename.getAbsolutePath(), fftSize, false);
+        AudioRecordingStream stream = minimLib.loadFileStream(filename, fftSize, false);
 
-        System.out.println("\n[--- Processing " + songLengthLimitSeconds + "s of " + filename.getName() + " ---]");
+        System.out.println("\n[--- Processing " + songLengthLimitSeconds + "s of " + filename + " ---]");
         // tell it to "play" so we can read from it.
         stream.play();
 
@@ -60,7 +64,6 @@ public class CExperimentalSoundProcessor implements ISoundProcessor
         // now we'll analyze the samples in chunks
         int totalChunks = (totalSamples / fftSize) + 1;
 
-        System.out.println("Performing Beat Detection...");
         for (int i = 0; i < fewTimes.length; i++) {
             if (fewTimes[i] == null)
                 fewTimes[i] = new TFloatArrayList();
@@ -81,7 +84,7 @@ public class CExperimentalSoundProcessor implements ISoundProcessor
             if( AutoStepper.INDICATOR && chunkIdx == 50)
             {
                 // Section to playback music
-                AudioSample fullSong = AutoStepper.minimLib.loadSample(filename.getAbsolutePath());
+                AudioSample fullSong = AutoStepper.minimLib.loadSample(filename);
                 stream.getMillisecondLength();
                 fullSong.trigger();
                 long millis = System.currentTimeMillis();
@@ -121,22 +124,54 @@ public class CExperimentalSoundProcessor implements ISoundProcessor
             MidFFTAmount.add(avg);
             MidFFTMaxes.add(max);
             // store basic percussion times
-            if (beatDetectFrequencyHighSensitivity.isKick())
+
+            int lowerFrequencyKickThreshold = Math.round(params.get(AlgorithmParameter.KICK_LOW_FREQ.value()));
+            int higherFrequencyKickThreshold = Math.round(params.get(AlgorithmParameter.KICK_HIGH_FREQ.value()));
+            int kickBandsThreshold = Math.round(params.get(AlgorithmParameter.KICK_BAND_FREQ.value()));
+
+            int lowerFrequencySnareThreshold = Math.round(params.get(AlgorithmParameter.SNARE_LOW_FREQ.value()));
+            int higherFrequencySnareThreshold = Math.round(params.get(AlgorithmParameter.SNARE_HIGH_FREQ.value()));
+            int snareBandsThreshold = Math.round(params.get(AlgorithmParameter.SNARE_BAND_FREQ.value()));
+
+            if (beatDetectFrequencyHighSensitivity.isRange(lowerFrequencyKickThreshold, higherFrequencyKickThreshold, kickBandsThreshold))
                 manyTimes[SoundParameter.KICKS.value()].add(time);
-            if (beatDetectFrequencyHighSensitivity.isHat())
-                manyTimes[SoundParameter.HAT.value()].add(time);
-            if (beatDetectFrequencyHighSensitivity.isSnare(false))
+            // if (beatDetectFrequencyHighSensitivity.isHat())
+            //     manyTimes[SoundParameter.HAT.value()].add(time);
+            if (beatDetectFrequencyHighSensitivity.isRange(lowerFrequencySnareThreshold, higherFrequencySnareThreshold, snareBandsThreshold))
                 manyTimes[SoundParameter.SNARE.value()].add(time);
-            if (beatDetectSoundHighSensitivity.isOnset())
-                manyTimes[SoundParameter.BEAT.value()].add(time);
-            if (beatDetectFrequencyLowSensitivity.isKick())
+
+            if (beatDetectFrequencyLowSensitivity.isRange(lowerFrequencyKickThreshold, higherFrequencyKickThreshold, kickBandsThreshold))
                 fewTimes[SoundParameter.KICKS.value()].add(time);
-            if (beatDetectFrequencyLowSensitivity.isHat())
-                fewTimes[SoundParameter.HAT.value()].add(time);
-            if (beatDetectFrequencyLowSensitivity.isSnare(false))
+            // if (beatDetectFrequencyLowSensitivity.isHat())
+            //     fewTimes[SoundParameter.HAT.value()].add(time);
+            if (beatDetectFrequencyLowSensitivity.isRange(lowerFrequencySnareThreshold, higherFrequencySnareThreshold, snareBandsThreshold))
                 fewTimes[SoundParameter.SNARE.value()].add(time);
+
             if (beatDetectSoundLowSensitivity.isOnset())
                 fewTimes[SoundParameter.BEAT.value()].add(time);
+
+            if (beatDetectSoundHighSensitivity.isOnset())
+                manyTimes[SoundParameter.BEAT.value()].add(time);
+
+            // if (beatDetectFrequencyHighSensitivity.isKick())
+            //     manyTimes[SoundParameter.KICKS.value()].add(time);
+            // // if (beatDetectFrequencyHighSensitivity.isHat())
+            // //     manyTimes[SoundParameter.HAT.value()].add(time);
+            // if (beatDetectFrequencyHighSensitivity.isSnare(false))
+            //     manyTimes[SoundParameter.SNARE.value()].add(time);
+
+            // if (beatDetectFrequencyLowSensitivity.isKick())
+            //     fewTimes[SoundParameter.KICKS.value()].add(time);
+            // // if (beatDetectFrequencyLowSensitivity.isHat())
+            // //     fewTimes[SoundParameter.HAT.value()].add(time);
+            // if (beatDetectFrequencyLowSensitivity.isSnare(false))
+            //     fewTimes[SoundParameter.SNARE.value()].add(time);
+
+            // if (beatDetectSoundLowSensitivity.isOnset())
+            //     fewTimes[SoundParameter.BEAT.value()].add(time);
+
+            // if (beatDetectSoundHighSensitivity.isOnset())
+            //     manyTimes[SoundParameter.BEAT.value()].add(time);
 
             float rms = 0f;
             float[] samples = buffer.getChannel(0);
@@ -150,8 +185,8 @@ public class CExperimentalSoundProcessor implements ISoundProcessor
                 maxVolume = currVolume;
             }
         }
-        System.out.println("Loudest midrange average to normalize to 1: " + largestAvg);
-        System.out.println("Loudest midrange maximum to normalize to 1: " + largestMax);
+        // System.out.println("Loudest midrange average to normalize to 1: " + largestAvg);
+        // System.out.println("Loudest midrange maximum to normalize to 1: " + largestMax);
         float scaleBy = 1f / largestAvg;
         float scaleMaxBy = 1f / largestMax;
         float scaleVolume = 1f / maxVolume;
@@ -175,6 +210,18 @@ public class CExperimentalSoundProcessor implements ISoundProcessor
             return;
         }
         bpm = Math.round(Averages.getMostCommonFightlapa(common, 0.5f, true));
+
+        timePerBeat = 60f / bpm;
+        TFloatArrayList startTimes = new TFloatArrayList();
+        for (int i = 0; i < fewTimes.length; i++) {
+            startTimes.add(AutoStepper.getBestOffset(timePerBeat, fewTimes[i], 0.01f));
+            startTimes.add(AutoStepper.getBestOffset(timePerBeat, manyTimes[i], 0.01f));
+        }
+        // give extra weight to fewKicks
+        float kickStartTime = AutoStepper.getBestOffset(timePerBeat, fewTimes[SoundParameter.KICKS.value()], 0.01f);
+        startTimes.add(kickStartTime);
+        startTimes.add(kickStartTime);
+        startTime = -Averages.getMostCommonPhr00t(startTimes, 0.02f, false);
     }
 
     void AddCommonBPMs(TFloatArrayList common, TFloatArrayList times, float doubleSpeed, float timePerSample) {
@@ -212,5 +259,15 @@ public class CExperimentalSoundProcessor implements ISoundProcessor
     @Override
     public float timePerSample() {
         return timePerSample;
+    }
+
+    @Override
+    public float GetTimePerBeat() {
+        return timePerBeat;
+    }
+
+    @Override
+    public float GetStartTime() {
+        return startTime;
     }
 }

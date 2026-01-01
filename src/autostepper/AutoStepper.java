@@ -11,11 +11,14 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.Scanner;
 
+import autostepper.genetic.AlgorithmParameter;
+import autostepper.genetic.GeneticOptimizer;
 import autostepper.misc.Averages;
 import autostepper.misc.Utils;
+import autostepper.moveassigners.ParametrizedAssigner;
 import autostepper.moveassigners.SimfileDifficulty;
+import autostepper.smfile.SmFileParser;
 import autostepper.soundprocessing.CExperimentalSoundProcessor;
-import autostepper.soundprocessing.CStandardSoundProcessor;
 import autostepper.soundprocessing.ISoundProcessor;
 import autostepper.useractions.BPMOffset;
 import autostepper.useractions.UserActions;
@@ -25,8 +28,17 @@ import autostepper.vibejudges.SoundParameter;
  *
  * @author Phr00t
  */
+
+
+// TODO:
+// Parametrize rest - CHECK
+// assign enum values - CHECK
+// provide min/max for different params - CHECK
+// calculate percentage diff between results and expected
+// train
 public class AutoStepper {
 
+    public static boolean TRAIN = false;
     public static boolean INDICATOR = false;
     public static boolean DEBUG_STEPS = true;
     public static boolean RANDOMIZED = false;
@@ -98,10 +110,8 @@ public class AutoStepper {
         input = getArg(args, "input", ".");
         duration = Float.parseFloat(getArg(args, "duration", "90"));
         STARTSYNC = Float.parseFloat(getArg(args, "synctime", "0.0"));
-        USETAPPER = getArg(args, "tap", "false").equals("true");
         PREVIEW_DETECTION = getArg(args, "preview", "false").equals("true");
         TAPSYNC = Double.parseDouble(getArg(args, "tapsync", "-0.11"));
-        UPDATESM = getArg(args, "updatesm", "false").equals("true");
         File inputFile = new File(input);
 
         duration = correctTime(inputFile, duration);
@@ -147,102 +157,53 @@ public class AutoStepper {
 
     void analyzeUsingAudioRecordingStream(File filename, float songLengthLimitSeconds, String outputDir) {
 
-        // ISoundProcessor soundProcessor = new CStandardSoundProcessor();
-        ISoundProcessor soundProcessor = new CExperimentalSoundProcessor();
+        // String originalNotes = OgStepGenerator.GenerateNotes(2, 2, manyTimes, fewTimes, MidFFTAmount,
+        //         MidFFTMaxes, timePerSample, timePerBeat, startTime, songLengthLimitSeconds, false, volume);
 
-        
-        // collected song data
-        final TFloatArrayList[] manyTimes = new TFloatArrayList[4];
-        final TFloatArrayList[] fewTimes = new TFloatArrayList[4];
-        soundProcessor.ProcessMusic(minimLib, filename, songLengthLimitSeconds, manyTimes, fewTimes);
+        String newNotes = "";
+        TFloatArrayList startingPoint = new TFloatArrayList();
 
-        float BPM = 0f, startTime = 0f, timePerBeat = 0f;
-        if (USETAPPER) {
-            BPMOffset bpmOffset = UserActions.getTappedBPM(filename.getAbsolutePath());
-            BPM = bpmOffset.BPM();
-            timePerBeat = 60f / BPM;
-            startTime = bpmOffset.offset();
-        } else if (UPDATESM) {
-            File smfile = SMGenerator.getSMFile(filename, outputDir);
-            if (smfile.exists()) {
-                try {
-                    BufferedReader br = new BufferedReader(new FileReader(smfile));
-                    while (br.ready() && (BPM == 0f || startTime == 0f)) {
-                        String line = br.readLine();
-                        if (line.contains("#OFFSET:")) {
-                            int off = line.indexOf("#OFFSET:") + 8;
-                            int end = line.indexOf(";", off);
-                            startTime = Float.parseFloat(line.substring(off, end));
-                            System.out.println("StartTime from SM file: " + startTime);
-                        }
-                        if (line.contains("#BPMS:")) {
-                            int off = line.indexOf("#BPMS:");
-                            off = line.indexOf("=", off) + 1;
-                            int end = line.indexOf(";", off);
-                            BPM = Float.parseFloat(line.substring(off, end));
-                            System.out.println("BPM from SM file: " + BPM);
-                        }
-                    }
-                    timePerBeat = 60f / BPM;
-                } catch (Exception e) {
-                }
-            } else {
-                System.out.println("Couldn't find SM to update: " + smfile.getAbsolutePath());
-            }
+        startingPoint.insert(AlgorithmParameter.JUMP_THRESHOLD.value(), 2.0f);
+        startingPoint.insert(AlgorithmParameter.TAP_THRESHOLD.value(), 1.0f);
+        startingPoint.insert(AlgorithmParameter.SUSTAIN_THESHOLD.value(), 1.0f);
+        startingPoint.insert(AlgorithmParameter.SUSTAIN_FACTOR.value(), 0.2f);
+        startingPoint.insert(AlgorithmParameter.GRANULARITY_MODIFIER.value(), 0.98f);
+        startingPoint.insert(AlgorithmParameter.PRECISE_GRANULARITY_MODIFIER.value(), 0.5f);
+        startingPoint.insert(AlgorithmParameter.FIRST_VOLUME_THRESHOLD.value(), 0.4f);
+        startingPoint.insert(AlgorithmParameter.SECOND_VOLUME_THRESHOLD.value(), 0.8f);
+        startingPoint.insert(AlgorithmParameter.FFT_MAX_THRESHOLD.value(), 0.8f);
+        startingPoint.insert(AlgorithmParameter.KICK_LOW_FREQ.value(), 1f);
+        startingPoint.insert(AlgorithmParameter.KICK_HIGH_FREQ.value(), 6f);
+        startingPoint.insert(AlgorithmParameter.KICK_BAND_FREQ.value(), 2f);
+        startingPoint.insert(AlgorithmParameter.SNARE_LOW_FREQ.value(), 8f);
+        startingPoint.insert(AlgorithmParameter.SNARE_HIGH_FREQ.value(), 40f);
+        startingPoint.insert(AlgorithmParameter.SNARE_BAND_FREQ.value(), 4f);
+        assert(startingPoint.size() == (AlgorithmParameter.SNARE_BAND_FREQ.value() + 1));
+
+        StepGenerator stepGenerator = new StepGenerator();
+        if (TRAIN)
+        {
+            int STEP_GRANULARITY = 4;
+            GeneticOptimizer geneticOptimizer = new GeneticOptimizer();
+            TFloatArrayList optimalParameters = geneticOptimizer.optimize(STEP_GRANULARITY, startingPoint);
+            ArrayList<ArrayList<Character>> result = stepGenerator.GenerateNotes(filename.getAbsolutePath(), SimfileDifficulty.HARD, STEP_GRANULARITY,
+                    false, optimalParameters);
+            newNotes = SmFileParser.EncodeArrowLines(result, STEP_GRANULARITY);
         }
-        if (BPM == 0f) {
-            BPM = soundProcessor.GetBpm();
-            timePerBeat = 60f / BPM;
-            TFloatArrayList startTimes = new TFloatArrayList();
-            for (int i = 0; i < fewTimes.length; i++) {
-                startTimes.add(getBestOffset(timePerBeat, fewTimes[i], 0.01f));
-                startTimes.add(getBestOffset(timePerBeat, manyTimes[i], 0.01f));
-            }
-            // give extra weight to fewKicks
-            float kickStartTime = getBestOffset(timePerBeat, fewTimes[SoundParameter.KICKS.value()], 0.01f);
-            startTimes.add(kickStartTime);
-            startTimes.add(kickStartTime);
-            startTime = -Averages.getMostCommonPhr00t(startTimes, 0.02f, false);
+        else
+        {
+            int STEP_GRANULARITY = 2;
+            ArrayList<ArrayList<Character>> result = stepGenerator.GenerateNotes(filename.getAbsolutePath(), SimfileDifficulty.HARD, STEP_GRANULARITY,
+                    false, startingPoint);
+            newNotes = SmFileParser.EncodeArrowLines(result, STEP_GRANULARITY);
         }
-        System.out.println("Time per beat: " + timePerBeat + ", BPM: " + BPM);
-        System.out.println("Start Time: " + startTime);
+
+        float BPM = stepGenerator.getBPM();
+        float startTime = stepGenerator.getStartTime();
 
         // start making the SM
         BufferedWriter smfile = SMGenerator.GenerateSM(BPM, startTime, filename, outputDir);
-
-        StepGenerator newStepGenerator = new StepGenerator();
-
-        TFloatArrayList MidFFTMaxes = soundProcessor.GetMidFFTMaxes();
-        TFloatArrayList MidFFTAmount = soundProcessor.GetMidFFTAmount();
-        TFloatArrayList volume = soundProcessor.getVolume();
-        float timePerSample = soundProcessor.timePerSample();
-
-        // SMGenerator.AddNotes(smfile, SMGenerator.Beginner,
-        // StepGenerator.GenerateNotes(1, HARDMODE ? 2 : 4, manyTimes, fewTimes,
-        // MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, seconds,
-        // false));
-        // SMGenerator.AddNotes(smfile, SMGenerator.Easy, StepGenerator.GenerateNotes(1,
-        // HARDMODE ? 1 : 2, manyTimes, fewTimes, MidFFTAmount, MidFFTMaxes,
-        // timePerSample, timePerBeat, startTime, seconds, false));
-        // SMGenerator.AddNotes(smfile, SMGenerator.Medium,
-        // StepGenerator.GenerateNotes(2, HARDMODE ? 4 : 6, manyTimes, fewTimes,
-        // MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, seconds,
-        // false));
-
-        // String originalNotes = OgStepGenerator.GenerateNotes(2, 2, manyTimes, fewTimes, MidFFTAmount,
-        //         MidFFTMaxes, timePerSample, timePerBeat, startTime, songLengthLimitSeconds, false, volume);
-        String newNotes = newStepGenerator.GenerateNotes(filename.getAbsolutePath(), SimfileDifficulty.HARD, 4,
-                fewTimes, MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, songLengthLimitSeconds, false, volume);
-
         SMGenerator.AddNotes(smfile, SMGenerator.Hard, newNotes);
-        // SMGenerator.AddNotes(smfile, SMGenerator.Hard,
-        // OgStepGenerator.GenerateNotes(2, HARDMODE ? 2 : 4, manyTimes, fewTimes,
-        // MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, seconds,
-        // false));
-        // SMGenerator.AddNotes(smfile, SMGenerator.Challenge,
-        // StepGenerator.GenerateNotes(2, HARDMODE ? 1 : 2, manyTimes, fewTimes,
-        // MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, seconds,
-        // true));
         SMGenerator.Complete(smfile);
 
         System.out.println("[--------- SUCCESS ----------]");

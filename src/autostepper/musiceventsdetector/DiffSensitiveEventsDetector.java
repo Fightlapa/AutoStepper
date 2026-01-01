@@ -14,7 +14,7 @@ public class DiffSensitiveEventsDetector extends CMusicEventsDetector {
             float totalTime, TFloatArrayList FFTAverages, TFloatArrayList FFTMaxes, TFloatArrayList volumes, float timePerFFT,
             TFloatArrayList[] fewTimes, float sustainThresholdFactor, float granularityModifier, float preciseGranularityModifier) {
         ArrayList<Map<SoundParameter, Object>> NoteEvents = new ArrayList<>();
-
+        System.out.println("Detecting events");
         int timeIndex = 0;
         float timeGranularity = timePerBeat / stepGranularity;
         float standardPrecision = timeGranularity * granularityModifier;
@@ -34,12 +34,12 @@ public class DiffSensitiveEventsDetector extends CMusicEventsDetector {
                 nearKick = isNearATime(t, fewTimes[SoundParameter.KICKS.value()], standardPrecision) && !isNearATime(t - highPrecision, fewTimes[SoundParameter.KICKS.value()], ultraPrecision);
                 nearSnare = isNearATime(t, fewTimes[SoundParameter.SNARE.value()], standardPrecision) && !isNearATime(t - highPrecision, fewTimes[SoundParameter.SNARE.value()], ultraPrecision);
                 nearEnergy = isNearATime(t, fewTimes[SoundParameter.BEAT.value()], standardPrecision) && !isNearATime(t - highPrecision, fewTimes[SoundParameter.BEAT.value()], ultraPrecision);
-                nearHat = isNearATime(t, fewTimes[SoundParameter.HAT.value()], standardPrecision) && !isNearATime(t - highPrecision, fewTimes[SoundParameter.HAT.value()], ultraPrecision);
+                // nearHat = isNearATime(t, fewTimes[SoundParameter.HAT.value()], standardPrecision) && !isNearATime(t - highPrecision, fewTimes[SoundParameter.HAT.value()], ultraPrecision);
                 Map<SoundParameter, Object> events = new HashMap<>();
                 events.put(SoundParameter.KICKS, nearKick);
                 events.put(SoundParameter.SNARE, nearSnare);
                 events.put(SoundParameter.BEAT, nearEnergy);
-                events.put(SoundParameter.HAT, nearHat);
+                // events.put(SoundParameter.HAT, nearHat);
                 events.put(SoundParameter.SUSTAINED, sustained);
                 // Some heuristic, best effort detection
                 events.put(SoundParameter.SILENCE, (fftmax + fftavg) < 0.2f);
@@ -60,7 +60,7 @@ public class DiffSensitiveEventsDetector extends CMusicEventsDetector {
                 events.put(SoundParameter.SUSTAINED, false);
                 events.put(SoundParameter.SILENCE, true);
                 events.put(SoundParameter.HALF_BEAT, false);
-                events.put(SoundParameter.HAT, false);
+                // events.put(SoundParameter.HAT, false);
                 events.put(SoundParameter.NOTHING, true);
                 events.put(SoundParameter.FFT_MAX, 0f);
                 events.put(SoundParameter.FFT_AVG, 0f);

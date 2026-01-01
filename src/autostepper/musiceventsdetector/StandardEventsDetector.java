@@ -33,12 +33,12 @@ public class StandardEventsDetector extends CMusicEventsDetector {
                 nearKick = isNearATime(t, fewTimes[SoundParameter.KICKS.value()], checkWindow);
                 nearSnare = isNearATime(t, fewTimes[SoundParameter.SNARE.value()], checkWindow);
                 nearEnergy = isNearATime(t, fewTimes[SoundParameter.BEAT.value()], checkWindow);
-                nearHat = isNearATime(t, fewTimes[SoundParameter.HAT.value()], checkWindow);
+                // nearHat = isNearATime(t, fewTimes[SoundParameter.HAT.value()], checkWindow);
                 Map<SoundParameter, Object> events = new HashMap<>();
                 events.put(SoundParameter.KICKS, nearKick);
                 events.put(SoundParameter.SNARE, nearSnare);
                 events.put(SoundParameter.BEAT, nearEnergy);
-                events.put(SoundParameter.HAT, nearHat);
+                // events.put(SoundParameter.HAT, nearHat);
                 events.put(SoundParameter.SUSTAINED, sustained);
                 // Some heuristic, best effort detection
                 events.put(SoundParameter.SILENCE, (fftmax + fftavg) < 0.2f);
@@ -59,7 +59,7 @@ public class StandardEventsDetector extends CMusicEventsDetector {
                 events.put(SoundParameter.SUSTAINED, false);
                 events.put(SoundParameter.SILENCE, true);
                 events.put(SoundParameter.HALF_BEAT, false);
-                events.put(SoundParameter.HAT, false);
+                // events.put(SoundParameter.HAT, false);
                 events.put(SoundParameter.NOTHING, true);
                 events.put(SoundParameter.FFT_MAX, 0f);
                 events.put(SoundParameter.FFT_AVG, 0f);

@@ -205,9 +205,9 @@ public class Minim
 	 */
 	public static void error(String message)
 	{
-		System.out.println( "=== Minim Error ===" );
-		System.out.println( "=== " + message );
-		System.out.println();
+		// System.out.println( "=== Minim Error ===" );
+		// System.out.println( "=== " + message );
+		// System.out.println();
 	}
 
 	/** @invisible

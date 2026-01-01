@@ -524,6 +524,10 @@ public class BeatDetect
 		{
 			return false;
 		}
+		if (high > spect.avgSize() - 1)
+		{
+			high = spect.avgSize() - 1;
+		}
 		int num = 0;
 		for (int i = low; i < high + 1; i++)
 		{

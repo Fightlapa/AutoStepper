@@ -14,15 +14,20 @@ import java.util.stream.Collectors;
 
 import autostepper.moveassigners.SimfileDifficulty;
 import autostepper.musiceventsdetector.CMusicEventsDetector;
+import autostepper.genetic.AlgorithmParameter;
+import autostepper.misc.Utils;
 import autostepper.moveassigners.CStepAssigner;
 import autostepper.moveassigners.ParametrizedAssigner;
 import autostepper.vibejudges.ExcitedByEverythingJudge;
 import autostepper.vibejudges.DeafToBeatJudge;
 import autostepper.vibejudges.IVibeJudge;
+import autostepper.vibejudges.ParametrizedJudge;
 import autostepper.vibejudges.PopJudge;
 import autostepper.vibejudges.SoundParameter;
 import autostepper.vibejudges.VibeScore;
 import autostepper.musiceventsdetector.StandardEventsDetector;
+import autostepper.soundprocessing.CExperimentalSoundProcessor;
+import autostepper.soundprocessing.ISoundProcessor;
 import autostepper.musiceventsdetector.DiffSensitiveEventsDetector;
 import autostepper.musiceventsdetector.PreciseDiffSensitiveEventsDetector;
 import ddf.minim.AudioSample;
@@ -32,6 +37,8 @@ import ddf.minim.AudioSample;
  * @author Phr00t
  */
 public class StepGenerator {
+
+    ISoundProcessor soundProcessor = new CExperimentalSoundProcessor();
 
     static String redStep(int step) {
         // step: 0–9
@@ -138,36 +145,54 @@ public class StepGenerator {
         }
     }
     
-    public String GenerateNotes(String filename, SimfileDifficulty difficulty, int stepGranularity,
-                                       TFloatArrayList[] fewTimes,
-                                       TFloatArrayList FFTAverages, TFloatArrayList FFTMaxes, float timePerFFT,
-                                       float timePerBeat, float timeOffset, float totalTime,
-                                       boolean allowMines, TFloatArrayList volume) {     
+    public ArrayList<ArrayList<Character>> GenerateNotes(String filename, SimfileDifficulty difficulty, int stepGranularity,
+                                       boolean allowMines, TFloatArrayList params)
+        {
+        // collected song data
+        final TFloatArrayList[] manyTimes = new TFloatArrayList[4];
+        final TFloatArrayList[] fewTimes = new TFloatArrayList[4];
+
+        float songTime = Utils.getSongTime(filename);
+        soundProcessor.ProcessMusic(AutoStepper.minimLib, filename, songTime, manyTimes, fewTimes, params);
+
+        TFloatArrayList FFTMaxes = soundProcessor.GetMidFFTMaxes();
+        TFloatArrayList FFTAverages = soundProcessor.GetMidFFTAmount();
+        TFloatArrayList volume = soundProcessor.getVolume();
+        float timePerSample = soundProcessor.timePerSample();
+        float timePerBeat = soundProcessor.GetTimePerBeat();
+        float startTime = soundProcessor.GetStartTime();
+
+        float granularityModifier = params.get(AlgorithmParameter.GRANULARITY_MODIFIER.value());
+        float preciseGranularityModifier = params.get(AlgorithmParameter.PRECISE_GRANULARITY_MODIFIER.value());
+
         // To gather infor about kicks, snares etc
         // It parses whole song, so that next steps can access context
         ArrayList<Map<SoundParameter, Object>> NoteEvents = null;
+        // 0 - jumpThreshold
+        // 1 - tapThreshold
+        // 2 - sustainThreshold
         for (float sustainFactor = 0.2f; sustainFactor < 0.3f; sustainFactor += 0.02f) {
             // CMusicEventsDetector eventsDetector = new StandardEventsDetector();
             CMusicEventsDetector eventsDetector = new DiffSensitiveEventsDetector();
             // CMusicEventsDetector eventsDetector = new PreciseDiffSensitiveEventsDetector();
             
-            NoteEvents = eventsDetector.GetEvents(stepGranularity, timePerBeat, timeOffset, totalTime, FFTAverages, FFTMaxes, volume, timePerFFT, fewTimes, sustainFactor, 0.98f, 0.5f);
+            NoteEvents = eventsDetector.GetEvents(stepGranularity, timePerBeat, startTime, songTime, FFTAverages, FFTMaxes, volume, timePerSample, fewTimes, sustainFactor, granularityModifier, preciseGranularityModifier);
 
             long sustains = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.SUSTAINED))).count();
             long kicks = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.KICKS))).count();
             long snares = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.SNARE))).count();
             long beat = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.BEAT))).count();
-            long hat = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.HAT))).count();
+            // long hat = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.HAT))).count();
             long silence = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.SILENCE))).count();
-            System.out.println("SustainFactor: " + sustainFactor);
-            System.out.println("Sustains: " + sustains + ", Kicks: " + kicks + ", Snares: " + snares + ", Beat: " + beat + ", Hat: " + hat + ", Silence: " + silence);
+            // System.out.println("SustainFactor: " + sustainFactor);
+            System.out.println("Sustains: " + sustains + ", Kicks: " + kicks + ", Snares: " + snares + ", Beat: " + beat + ", Silence: " + silence);
 
             // Random value for now 
             if (sustains < beat / 3)
             {
                 if (AutoStepper.PREVIEW_DETECTION)
                 {
-                    preview(filename, NoteEvents, stepGranularity, timePerBeat, FFTAverages, FFTMaxes, volume, totalTime);
+                    preview(filename, NoteEvents, stepGranularity, timePerBeat, FFTAverages, FFTMaxes, volume, songTime);
                 }
                 break;
             }
@@ -181,7 +206,7 @@ public class StepGenerator {
         // Beginner -> 170 / minute
         // Beginner -> 190 / minute
         int targetSteps = 0;
-        float songLengthMinutes = totalTime / 60f;
+        float songLengthMinutes = songTime / 60f;
         switch (difficulty) {
             case BEGINNER: targetSteps = (int) (55 * songLengthMinutes); break;
             case EASY: targetSteps = (int) (80 * songLengthMinutes); break;
@@ -197,18 +222,25 @@ public class StepGenerator {
         // For now only checking if something should happen, not exactly on which arrow
         // So that later on it could be assigned to exact arrow, so '0210' or '1002' etc.
         ArrayList<IVibeJudge> judges = new ArrayList<>();
-        judges.add(new PopJudge());
-        judges.add(new ExcitedByEverythingJudge());
-        judges.add(new DeafToBeatJudge());
+
+        judges.add(new ParametrizedJudge(params.get(AlgorithmParameter.FIRST_VOLUME_THRESHOLD.value()),
+                                         params.get(AlgorithmParameter.SECOND_VOLUME_THRESHOLD.value()),
+                                        params.get(AlgorithmParameter.FFT_MAX_THRESHOLD.value())));
+        // judges.add(new PopJudge());
+        // judges.add(new ExcitedByEverythingJudge());
+        // judges.add(new DeafToBeatJudge());
 
         ArrayList<CStepAssigner> moveAssigners = new ArrayList<>();
         // moveAssigners.add(new PopStepAssigner());
         // moveAssigners.add(new LazyPopStepAssigner());
         // moveAssigners.add(new MoreTapsAssigner());
-        moveAssigners.add(new ParametrizedAssigner(2, 1, 1));
-        moveAssigners.add(new ParametrizedAssigner(3, 1, 1));
-        moveAssigners.add(new ParametrizedAssigner(3, 2, 1));
-        moveAssigners.add(new ParametrizedAssigner(3, 2, 1));
+        int jumpThreshold = Math.round(params.get(AlgorithmParameter.JUMP_THRESHOLD.value()));
+        int tapThreshold = Math.round(params.get(AlgorithmParameter.TAP_THRESHOLD.value()));
+        int sustainThreshold = Math.round(params.get(AlgorithmParameter.SUSTAIN_THESHOLD.value()));
+        moveAssigners.add(new ParametrizedAssigner(jumpThreshold, tapThreshold, sustainThreshold));
+        // moveAssigners.add(new ParametrizedAssigner(3, 1, 1));
+        // moveAssigners.add(new ParametrizedAssigner(3, 2, 1));
+        // moveAssigners.add(new ParametrizedAssigner(3, 2, 1));
 
 
         long currentMargin = 99999;
@@ -224,7 +256,7 @@ public class StepGenerator {
             for (CStepAssigner moveAssigner : moveAssigners)
             {
                 // Moves have Simfile format, like '0210' -> empty, hold start, step, empty
-                ArrayList<ArrayList<Character>> currentMoveSet = moveAssigner.AssignMoves(NoteVibes, difficulty, totalTime);
+                ArrayList<ArrayList<Character>> currentMoveSet = moveAssigner.AssignMoves(NoteVibes, difficulty, songTime);
                 resultsFromJudge.put(moveAssigner, currentMoveSet);
                 long steps = 0;
                 for (ArrayList<Character> moveLine : currentMoveSet) {
@@ -233,7 +265,7 @@ public class StepGenerator {
                 long stepsDiff = Math.abs(steps - targetSteps);
                 if (stepsDiff < currentMargin)
                 {
-                    System.out.println("New candidate: " + judge.WhatsYourNameMrJudge() + " With Assigner: " + moveAssigner.AssignerName() + " Target steps: " + targetSteps + " result steps:" + steps);
+                    // System.out.println("New candidate: " + judge.WhatsYourNameMrJudge() + " With Assigner: " + moveAssigner.AssignerName() + " Target steps: " + targetSteps + " result steps:" + steps);
                     AllarrowLines = currentMoveSet;
                     currentMargin = stepsDiff;
                 }
@@ -241,34 +273,18 @@ public class StepGenerator {
             results.put(judge, resultsFromJudge);
         }
 
-        // ok, put together AllNotes
-        int commaSeperatorReset = 4 * stepGranularity;
-        String AllNotes = "";
-        int commaSeperator = commaSeperatorReset;
-        for (ArrayList<Character> arrayList : AllarrowLines) {
-            String result = arrayList.stream()
-                .map(c -> c == 'W' ? '0' : c) // to replace custom "HOLDING" to empty
-                .map(String::valueOf)
-                .collect(Collectors.joining());
-            AllNotes += result + "\n";
-            commaSeperator--;
-            if( commaSeperator == 0 ) {
-                AllNotes += ",\n";
-                commaSeperator = commaSeperatorReset;
-            }
-        }
-        // fill out the last empties
-        while( commaSeperator > 0 ) {
-            AllNotes += "3333";
-            commaSeperator--;
-            if( commaSeperator > 0 ) AllNotes += "\n";
-        }
-        int _stepCount = AllNotes.length() - AllNotes.replace(Character.toString(CStepAssigner.STEP), "").length();
-        int _holdCount = AllNotes.length() - AllNotes.replace(Character.toString(CStepAssigner.HOLD), "").length();
-        int _mineCount = AllNotes.length() - AllNotes.replace(Character.toString(CStepAssigner.MINE), "").length();
-        System.out.println("New algorithm. Steps: " + _stepCount + ", Holds: " + _holdCount + ", Expected steps: " + targetSteps);
+        return AllarrowLines;
+    }
 
-        return AllNotes;
+    public float getBPM()
+    {
+        return soundProcessor.GetBpm();
+    }
+
+    public float getStartTime()
+    {
+        return soundProcessor.GetStartTime();
     }
     
 }
+

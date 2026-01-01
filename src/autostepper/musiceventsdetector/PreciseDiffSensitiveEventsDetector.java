@@ -41,12 +41,12 @@ public class PreciseDiffSensitiveEventsDetector extends CMusicEventsDetector {
 
                 nearSnare = isNearATime(t, fewTimes[SoundParameter.SNARE.value()], timeGranularity) && !isNearATime(t - highPrecision, fewTimes[SoundParameter.SNARE.value()], highPrecision);
                 nearEnergy = isNearATime(t, fewTimes[SoundParameter.BEAT.value()], timeGranularity) && !isNearATime(t - highPrecision, fewTimes[SoundParameter.BEAT.value()], highPrecision);
-                nearHat = isNearATime(t, fewTimes[SoundParameter.HAT.value()], timeGranularity) && !isNearATime(t - highPrecision, fewTimes[SoundParameter.HAT.value()], highPrecision);
+                // nearHat = isNearATime(t, fewTimes[SoundParameter.HAT.value()], timeGranularity) && !isNearATime(t - highPrecision, fewTimes[SoundParameter.HAT.value()], highPrecision);
                 Map<SoundParameter, Object> events = new HashMap<>();
                 events.put(SoundParameter.KICKS, nearKick);
                 events.put(SoundParameter.SNARE, nearSnare);
                 events.put(SoundParameter.BEAT, nearEnergy);
-                events.put(SoundParameter.HAT, nearHat);
+                // events.put(SoundParameter.HAT, nearHat);
                 events.put(SoundParameter.SUSTAINED, sustained);
                 // Some heuristic, best effort detection
                 events.put(SoundParameter.SILENCE, (fftmax + fftavg) < 0.2f);
@@ -67,7 +67,7 @@ public class PreciseDiffSensitiveEventsDetector extends CMusicEventsDetector {
                 events.put(SoundParameter.SUSTAINED, false);
                 events.put(SoundParameter.SILENCE, true);
                 events.put(SoundParameter.HALF_BEAT, false);
-                events.put(SoundParameter.HAT, false);
+                // events.put(SoundParameter.HAT, false);
                 events.put(SoundParameter.NOTHING, true);
                 events.put(SoundParameter.FFT_MAX, 0f);
                 events.put(SoundParameter.FFT_AVG, 0f);

@@ -1,7 +1,10 @@
 package autostepper.misc;
 
+import java.io.File;
 import java.util.ArrayList;
 
+import autostepper.AutoStepper;
+import ddf.minim.spi.AudioRecordingStream;
 import gnu.trove.list.array.TFloatArrayList;
 
 // class - a legend, everything and nothing in every project
@@ -37,5 +40,13 @@ public class Utils
         return avg / arr.size() - 1;
     }
 
-    
+    public static float getSongTime(String inputFile) {
+        // anything to get song length
+        int fftSize = 512;
+
+        AudioRecordingStream stream = AutoStepper.minimLib.loadFileStream(inputFile, fftSize, false);
+        float songTime = stream.getMillisecondLength() / 1000f;
+        return songTime;
+    }
+
 }
