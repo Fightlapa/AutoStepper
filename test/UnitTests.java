@@ -1,5 +1,7 @@
 import org.junit.jupiter.api.Test;
 
+import autostepper.genetic.AlgorithmParameter;
+import autostepper.genetic.GeneticOptimizer;
 import autostepper.misc.Averages;
 import autostepper.misc.Utils;
 import gnu.trove.list.array.TFloatArrayList;
@@ -143,5 +145,16 @@ class UnitTests {
 
         float value = Averages.getMostCommonFightlapa(inputArray, threshold, closestToInteger);
         assertEquals(5.26f, value);
+    }
+
+
+    @Test
+    void checkGenesGeneratorIntRange()
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            float val = GeneticOptimizer.mutateSingleGene(AlgorithmParameter.KICK_LOW_FREQ.value());
+            assertTrue(val >= 1 && val <= 8);
+        }
     }
 }

@@ -33,6 +33,7 @@ public class ParametrizedAssigner extends CStepAssigner {
         // Here it will work in context windows
         // To start with something, it will search for patterns of 3 and 4 combos
         // Meaning steps without empty line inbetween
+        int steps = 0;
         int numberOfRows = NoteVibes.size();
         for (int i = 0; i < numberOfRows; i++)
         {
@@ -142,10 +143,12 @@ public class ParametrizedAssigner extends CStepAssigner {
 
             for (ArrowPosition arrowPosition : stepPositions) {
                 arrowLine.set(arrowPosition.value(), STEP);
+                steps++;
             }
 
             NoteMoves.add(arrowLine);
         }
+        System.out.println("Steps: " + steps);
         return NoteMoves;
     }
 

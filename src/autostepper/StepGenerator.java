@@ -25,11 +25,8 @@ import autostepper.vibejudges.ParametrizedJudge;
 import autostepper.vibejudges.PopJudge;
 import autostepper.vibejudges.SoundParameter;
 import autostepper.vibejudges.VibeScore;
-import autostepper.musiceventsdetector.StandardEventsDetector;
 import autostepper.soundprocessing.CExperimentalSoundProcessor;
 import autostepper.soundprocessing.Song;
-import autostepper.musiceventsdetector.DiffSensitiveEventsDetector;
-import autostepper.musiceventsdetector.PreciseDiffSensitiveEventsDetector;
 import ddf.minim.AudioSample;
 
 /**
@@ -182,14 +179,33 @@ public class StepGenerator {
     }
     
     public ArrayList<ArrayList<Character>> GenerateNotes(Song song, SimfileDifficulty difficulty, int stepGranularity,
-                                       boolean allowMines, TFloatArrayList params)
+                                       boolean allowMines, TFloatArrayList params, float expectedBpm)
     {
-        // collected song data
-        final TFloatArrayList[] manyTimes = new TFloatArrayList[4];
-        final TFloatArrayList[] fewTimes = new TFloatArrayList[4];
-
+        long wholeFunctionTimer = System.currentTimeMillis();
+        long timer = wholeFunctionTimer;
         float songTime = song.getSongTime();
-        soundProcessor.ProcessMusic(song, manyTimes, fewTimes, params);
+        if (AutoStepper.DEBUG_TIMINGS)
+        {
+            System.out.println("Initial song analysis: " + (System.currentTimeMillis() - timer) / 1000f + "s");
+        }
+
+        // Frequencies matching snare, kicks etc. in really small time windows
+        // Here even vocal could match those frequency triggering event to be set
+        timer = System.currentTimeMillis();
+        TFloatArrayList[] percussionEventsInTime = soundProcessor.ProcessMusic(song, params);
+        if (AutoStepper.DEBUG_TIMINGS)
+        {
+            System.out.println("Initial percussion event parsing: " + (System.currentTimeMillis() - timer) / 1000f + "s");
+        }
+
+        if (expectedBpm != -1f)
+        {
+            if (Math.abs(soundProcessor.GetBpm() - expectedBpm) > 0.6f)
+            {
+                // not as expected
+                return new ArrayList<>();
+            }
+        }
 
         TFloatArrayList FFTMaxes = soundProcessor.GetMidFFTMaxes();
         TFloatArrayList FFTAverages = soundProcessor.GetMidFFTAmount();
@@ -197,88 +213,42 @@ public class StepGenerator {
         float timePerBeat = soundProcessor.GetTimePerBeat();
         float startTime = soundProcessor.GetStartTime();
 
-        // To gather infor about kicks, snares etc
+        // range which was doing the trick is usually between 0.2f and 0.3f
+        float sustainFactor = 0.35f;
+        CMusicEventsDetector eventsDetector = new CMusicEventsDetector();
+        
+        // To gather info about kicks, snares etc.
         // It parses whole song, so that next steps can access context
-        ArrayList<Map<SoundParameter, Object>> NoteEvents = null;
-        // 0 - jumpThreshold
-        // 1 - tapThreshold
-        // 2 - sustainThreshold
-        for (float sustainFactor = 0.2f; sustainFactor < 0.3f; sustainFactor += 0.02f) {
-            // CMusicEventsDetector eventsDetector = new StandardEventsDetector();
-            CMusicEventsDetector eventsDetector = new DiffSensitiveEventsDetector();
-            // CMusicEventsDetector eventsDetector = new PreciseDiffSensitiveEventsDetector();
-            
-            NoteEvents = eventsDetector.GetEvents(stepGranularity, timePerBeat, startTime, songTime, FFTAverages, FFTMaxes, volume, song.getTimePerSample(), fewTimes, sustainFactor, granularityModifier, preciseGranularityModifier);
-
-            long sustains = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.SUSTAINED))).count();
-            long kicks = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.KICKS))).count();
-            long snares = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.SNARE))).count();
-            long beat = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.BEAT))).count();
-            // long hat = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.HAT))).count();
-            long silence = NoteEvents.stream().filter(m -> Boolean.TRUE.equals(m.get(SoundParameter.SILENCE))).count();
-            // System.out.println("SustainFactor: " + sustainFactor);
-            System.out.println("Sustains: " + sustains + ", Kicks: " + kicks + ", Snares: " + snares + ", Beat: " + beat + ", Silence: " + silence);
-
-            // Random value for now 
-            if (sustains < beat / 3)
-            {
-                if (AutoStepper.PREVIEW_DETECTION)
-                {
-                    preview(song.getFilename(), NoteEvents, stepGranularity, timePerBeat, FFTAverages, FFTMaxes, volume, songTime);
-                }
-                break;
-            }
-        }
-
-        // Here we'll try different algorithms, we have some targets, like:
-        // Map to indicate for how many arrows are we aiming for whole song
-        // Beginner -> 55 / minute
-        // Easy -> 80 / minute
-        // Medium -> 105 / minute
-        // Beginner -> 170 / minute
-        // Beginner -> 190 / minute
-        int targetSteps = 0;
-        float songLengthMinutes = songTime / 60f;
-        switch (difficulty) {
-            case BEGINNER: targetSteps = (int) (55 * songLengthMinutes); break;
-            case EASY: targetSteps = (int) (80 * songLengthMinutes); break;
-            case MEDIUM: targetSteps = (int) (105 * songLengthMinutes); break;
-            case HARD: targetSteps = (int) (170 * songLengthMinutes); break;
-            case CHALLENGE: targetSteps = (int) (190 * songLengthMinutes); break;
-        };
-
-        // We'll try different algorithms, as for slower songs it's hard to get many arrows so we should decide to put arrow easier for those
-        long currentMargin = 99999;
-
-        ArrayList<ArrayList<Character>> AllarrowLines = null;
-        // Yeah, that looks great
-        Map<IVibeJudge, Map<CStepAssigner, ArrayList<ArrayList<Character>>>> results = new HashMap<>();
-        for (IVibeJudge judge : judges)
+        // This time using some logic, it can split vocal matching snare freq from real snare
+        timer = System.currentTimeMillis();
+        ArrayList<Map<SoundParameter, Object>> NoteEvents = eventsDetector.GetEvents(stepGranularity, timePerBeat, startTime, songTime, FFTAverages, FFTMaxes, volume, song.getTimePerSample(), percussionEventsInTime, sustainFactor, granularityModifier, preciseGranularityModifier);
+        if (AutoStepper.DEBUG_TIMINGS)
         {
-            Map<CStepAssigner, ArrayList<ArrayList<Character>>> resultsFromJudge = new HashMap<>();
-            ArrayList<Map<VibeScore, Integer>> NoteVibes = judge.GetVibes(NoteEvents);
-
-            for (CStepAssigner moveAssigner : moveAssigners)
-            {
-                // Moves have Simfile format, like '0210' -> empty, hold start, step, empty
-                ArrayList<ArrayList<Character>> currentMoveSet = moveAssigner.AssignMoves(NoteVibes, difficulty, songTime);
-                resultsFromJudge.put(moveAssigner, currentMoveSet);
-                long steps = 0;
-                for (ArrayList<Character> moveLine : currentMoveSet) {
-                    steps += moveLine.stream().filter(m -> m == CStepAssigner.STEP).count();
-                }
-                long stepsDiff = Math.abs(steps - targetSteps);
-                if (stepsDiff < currentMargin)
-                {
-                    // System.out.println("New candidate: " + judge.WhatsYourNameMrJudge() + " With Assigner: " + moveAssigner.AssignerName() + " Target steps: " + targetSteps + " result steps:" + steps);
-                    AllarrowLines = currentMoveSet;
-                    currentMargin = stepsDiff;
-                }
-            }
-            results.put(judge, resultsFromJudge);
+            System.out.println("Precise music events parsing: " + (System.currentTimeMillis() - timer) / 1000f + "s");
         }
 
-        return AllarrowLines;
+
+        if (AutoStepper.PREVIEW_DETECTION)
+        {
+            preview(song.getFilename(), NoteEvents, stepGranularity, timePerBeat, FFTAverages, FFTMaxes, volume, songTime);
+        }
+
+        timer = System.currentTimeMillis();
+        ArrayList<Map<VibeScore, Integer>> NoteVibes = judges.get(0).GetVibes(NoteEvents);
+        if (AutoStepper.DEBUG_TIMINGS)
+        {
+            System.out.println("Vibe assign: " + (System.currentTimeMillis() - timer) / 1000f + "s");
+        }
+
+        timer = System.currentTimeMillis();
+        ArrayList<ArrayList<Character>> moveSet = moveAssigners.get(0).AssignMoves(NoteVibes, difficulty, songTime);
+        if (AutoStepper.DEBUG_TIMINGS)
+        {
+            System.out.println("Assigning moves: " + (System.currentTimeMillis() - timer) / 1000f + "s");
+            System.out.println("Whole generation took: " + (System.currentTimeMillis() - wholeFunctionTimer) / 1000f + "s");
+        }
+
+        return moveSet;
     }
 
     public float getBPM()

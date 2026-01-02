@@ -23,20 +23,22 @@ import autostepper.soundprocessing.Song;
  * @author Phr00t
  */
 
-
 // TODO:
-// Parametrize rest - CHECK
-// assign enum values - CHECK
-// provide min/max for different params - CHECK
-// calculate percentage diff between results and expected
-// train
+// ensure volume array is as big as other arrays as those are used together
+// Jump has to be higher than tap
+// do something with vibe assignment as it can block learning from working properly
+// Maybe parametrize vibes
+// Then remove sustain as it's not really needed at this point yet... let's focus on just taps and jumps
 public class AutoStepper {
 
-    public static boolean TRAIN = false;
+    public static boolean TRAIN = true;
     public static boolean INDICATOR = false;
     public static boolean DEBUG_STEPS = true;
     public static boolean RANDOMIZED = false;
     public static boolean PREVIEW_DETECTION = false;
+
+    public static boolean SHOW_INFO = false;
+    public static boolean DEBUG_TIMINGS = false;
 
     // Having let's say sample rate of 44.100
     // We might want to reduce it a bit
@@ -163,7 +165,13 @@ public class AutoStepper {
         startingPoint.insert(AlgorithmParameter.SNARE_LOW_FREQ.value(), 8f);
         startingPoint.insert(AlgorithmParameter.SNARE_HIGH_FREQ.value(), 26f);
         startingPoint.insert(AlgorithmParameter.SNARE_BAND_FREQ.value(), 6f);
-        assert(startingPoint.size() == (AlgorithmParameter.SNARE_BAND_FREQ.value() + 1));
+        startingPoint.insert(AlgorithmParameter.HAT_LOW_FREQ.value(), 20f);
+        startingPoint.insert(AlgorithmParameter.HAT_HIGH_FREQ.value(), 26f);
+        startingPoint.insert(AlgorithmParameter.HAT_BAND_FREQ.value(), 1f);
+        if (startingPoint.size() != (AlgorithmParameter.HAT_BAND_FREQ.value() + 1))
+        {
+            throw new RuntimeException("Not enough parameters configured!");
+        }
 
         StepGenerator stepGenerator = new StepGenerator(startingPoint);
         Song song = new Song(filename.getAbsolutePath());
@@ -174,7 +182,7 @@ public class AutoStepper {
             GeneticOptimizer geneticOptimizer = new GeneticOptimizer();
             TFloatArrayList optimalParameters = geneticOptimizer.optimize(STEP_GRANULARITY, startingPoint);
             ArrayList<ArrayList<Character>> result = stepGenerator.GenerateNotes(song, SimfileDifficulty.HARD, STEP_GRANULARITY,
-                    false, optimalParameters);
+                    false, optimalParameters, -1f);
             newNotes = SmFileParser.EncodeArrowLines(result, STEP_GRANULARITY);
         }
         else
@@ -182,7 +190,7 @@ public class AutoStepper {
             long jazzMusicStarts = System.currentTimeMillis();
             int STEP_GRANULARITY = 2;
             ArrayList<ArrayList<Character>> result = stepGenerator.GenerateNotes(song, SimfileDifficulty.HARD, STEP_GRANULARITY,
-                    false, startingPoint);
+                    false, startingPoint, -1f);
             newNotes = SmFileParser.EncodeArrowLines(result, STEP_GRANULARITY);
             System.out.println("Time elapsed: " + (System.currentTimeMillis() - jazzMusicStarts) / 1000f + "s");
         }

@@ -22,7 +22,10 @@ public enum AlgorithmParameter {
     KICK_BAND_FREQ(11),
     SNARE_LOW_FREQ(12),
     SNARE_HIGH_FREQ(13),
-    SNARE_BAND_FREQ(14);
+    SNARE_BAND_FREQ(14),
+    HAT_LOW_FREQ(15),
+    HAT_HIGH_FREQ(16),
+    HAT_BAND_FREQ(17);
 
     private final int value;
 
@@ -85,7 +88,7 @@ public enum AlgorithmParameter {
             case SUSTAIN_THESHOLD:
                     return Optional.of(10);
             case KICK_LOW_FREQ:
-                    return Optional.of(10);
+                    return Optional.of(8);
             case KICK_HIGH_FREQ:
                     return Optional.of(10);
             case KICK_BAND_FREQ:
@@ -96,6 +99,12 @@ public enum AlgorithmParameter {
                     return Optional.of(40);
             case SNARE_BAND_FREQ:
                     return Optional.of(10);
+            case HAT_LOW_FREQ:
+                    return Optional.of(23);
+            case HAT_HIGH_FREQ:
+                    return Optional.of(30);
+            case HAT_BAND_FREQ:
+                    return Optional.of(2);
             default:
                     return Optional.empty();
         }
@@ -121,6 +130,12 @@ public enum AlgorithmParameter {
             case SNARE_HIGH_FREQ:
                     return Optional.of(15);
             case SNARE_BAND_FREQ:
+                    return Optional.of(1);
+            case HAT_LOW_FREQ:
+                    return Optional.of(17);
+            case HAT_HIGH_FREQ:
+                    return Optional.of(20);
+            case HAT_BAND_FREQ:
                     return Optional.of(1);
             default:
                     return Optional.empty();

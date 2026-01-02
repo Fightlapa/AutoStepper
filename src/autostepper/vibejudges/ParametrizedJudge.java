@@ -51,6 +51,12 @@ public class ParametrizedJudge implements IVibeJudge {
                     vibePower+=2;
                 }
 
+                if ((boolean)map.get(SoundParameter.BEAT) && (boolean)map.get(SoundParameter.QUARTER_BEAT))
+                {
+                    // To not treat equally quarter beat, it should have less vibe
+                    vibePower--;
+                }
+
                 if ((float)map.get(SoundParameter.VOLUME) > firstVolumeThreshold)
                 {
                     // That's some loud sound right there, give it some vibe

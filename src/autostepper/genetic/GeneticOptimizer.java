@@ -18,14 +18,26 @@ import gnu.trove.list.array.TFloatArrayList;
 public class GeneticOptimizer {
 
     // --- Configuration ---
-    static final int POPULATION_SIZE = 3;
-    static final int NUM_GENERATIONS = 3;
-    static final float MUTATION_RATE = 0.1f;
+    static final int POPULATION_SIZE = 8;
+    static final int NUM_GENERATIONS = 20;
+    static final float MUTATION_RATE = 0.15f;
 
     static Random random = new Random();
 
     int numberOfParams;
     int stepGranularity;
+    private ArrayList<Integer> song1Reference;
+    private ArrayList<Integer> song2Reference;
+    private Song song1;
+    private Song song2;
+
+    public GeneticOptimizer() {
+        song1Reference = SmFileParser.parseFile("Target/AbracadabraOut.sm");
+        song2Reference = SmFileParser.parseFile("Target/edamameOut.sm");
+
+        song1 = new Song("samples/Abracadabra.mp3");
+        song2 = new Song("samples/edamame.mp3");
+    }
 
     public TFloatArrayList optimize(int stepGranularity, TFloatArrayList startingPoint)
     {
@@ -39,7 +51,7 @@ public class GeneticOptimizer {
             population[i] = Arrays.copyOf(chromosome, chromosome.length);
         }
 
-        float[] bestIndividual = null;
+        ArrayList<float[]> bestIndividuals = new ArrayList<>();
         int bestScore = Integer.MIN_VALUE;
 
         // Run generations
@@ -61,42 +73,45 @@ public class GeneticOptimizer {
             // Evaluate fitness
             for (int i = 0; i < POPULATION_SIZE; i++) {
                 scores[i] = fitness(population[i]);
+                System.out.println("Jump\tTap\tsust\tsusf\tgran\tpgran\tvol1\tvol2\tfftmax\tkicklow\tkickhig\tkickb\tsnarlow\tsnarhig\tsnarb\thatlow\thathig\thatb");
+                for (int j = 0; j < population[i].length; j++) {
+                    System.out.print(String.format("%.3f", population[i][j]) + "\t");
+                }
+                System.out.println();
             }
 
             // Find the best in this generation
             for (int i = 0; i < POPULATION_SIZE; i++) {
                 if (scores[i] > bestScore) {
                     bestScore = scores[i];
-                    bestIndividual = Arrays.copyOf(population[i], numberOfParams);
+                    bestIndividuals.add(0, Arrays.copyOf(population[i], numberOfParams));
+                    if (bestIndividuals.size() > 3)
+                    {
+                        bestIndividuals.remove(3);
+                    }
                 }
             }
 
-            System.out.println("Generation " + gen + " Best score: " + bestScore);
+            System.out.println("Generation " + gen + " Best score: " + bestScore + " , best score possible: " + (song1Reference.size() + song2Reference.size()));
         }
 
-        System.out.println("Best individual: " + Arrays.toString(bestIndividual));
+        System.out.println("Best individuals: ");
+        for (float[] fs : bestIndividuals) {
+            System.out.println("Best individuals: " + Arrays.toString(fs));
+        }
         System.out.println("Best score: " + bestScore);
-        return new TFloatArrayList(bestIndividual);
+        return new TFloatArrayList(bestIndividuals.get(0));
     }
 
     // --- GA Components ---
     int fitness(float[] chromosome) {
-        ArrayList<Integer> abracadabraReference = SmFileParser.parseFile("Target/AbracadabraOut.sm");
-        ArrayList<Integer> cheapThrillsReference = SmFileParser.parseFile("Target/CheapThrillsOut.sm");
+        ArrayList<Integer> abracadabraResult = getSongFingerprint(song1, chromosome, 126f);
+        ArrayList<Integer> cureResult = getSongFingerprint(song2, chromosome, 106f);
 
-        Song bbracadabraSong = new Song("samples/Abracadabra.mp3");
-        Song cheapThrillsSong = new Song("samples/CheapThrills.mp3");
+        int numberOfDifferencesSong1 = calculateDifferences(song1Reference, abracadabraResult);
+        int numberOfDifferencesSong2 = calculateDifferences(song2Reference, cureResult);
 
-        ArrayList<Integer> abracadabraResult = getSongFingerprint(bbracadabraSong, chromosome);
-        ArrayList<Integer> cheapResult = getSongFingerprint(cheapThrillsSong, chromosome);
-        // float cheapDuration = Utils.getSongTime("samples/CheapThrills.mp3");
-        // float cheapBPM = soundProcessor.ProcessMusic(AutoStepper.minimLib, "samples/CheapThrills.mp3", cheapDuration, manyTimes, fewTimes);
-        // ArrayList<ArrayList<Character>> abracadabraResult = newStepGenerator.GenerateNotes("samples/CheapThrills.mp3", SimfileDifficulty.HARD, stepGranularity,
-        //     fewTimes, MidFFTAmount, MidFFTMaxes, timePerSample, timePerBeat, startTime, cheapDuration, false, volume);
-        int numberOfDifferencesAbracadabra = -calculateDifferences(abracadabraReference, abracadabraResult);
-        int numberOfDifferencesCheap = -calculateDifferences(cheapThrillsReference, cheapResult);
-
-        return numberOfDifferencesAbracadabra + numberOfDifferencesCheap;
+        return abracadabraResult.size() + cureResult.size() - numberOfDifferencesSong1 - numberOfDifferencesSong2;
     }
 
     private int calculateDifferences(ArrayList<Integer> abracadabraReference, ArrayList<Integer> abracadabraResult) {
@@ -121,20 +136,19 @@ public class GeneticOptimizer {
             return 999999; // There was not even single tap
         }
 
-        int groupedIndex = 0;
-        while ((groupedIndex + indexRef) < abracadabraReference.size() && (groupedIndex + indexResult) < abracadabraResult.size())
+        while (indexRef < abracadabraReference.size() && indexResult < abracadabraResult.size())
         {
-            totalDiffs += Math.abs(abracadabraReference.get(groupedIndex + indexRef) - abracadabraResult.get(groupedIndex + indexResult));
+            totalDiffs += Math.abs(abracadabraReference.get(indexRef) - abracadabraResult.get(indexResult));
             indexRef++;
             indexResult++;
         }
         return totalDiffs;
     }
 
-    private ArrayList<Integer> getSongFingerprint(Song song, float[] chromosome)
+    private ArrayList<Integer> getSongFingerprint(Song song, float[] chromosome, float expectedBpm)
     {
         StepGenerator stepGenerator = new StepGenerator(new TFloatArrayList(chromosome));
-        ArrayList<ArrayList<Character>> abracadabraArrows = stepGenerator.GenerateNotes(song, SimfileDifficulty.HARD, stepGranularity, false, new TFloatArrayList(chromosome));
+        ArrayList<ArrayList<Character>> abracadabraArrows = stepGenerator.GenerateNotes(song, SimfileDifficulty.HARD, stepGranularity, false, new TFloatArrayList(chromosome), expectedBpm);
         return SmFileParser.parseLines(abracadabraArrows);
     }
 
@@ -164,9 +178,9 @@ public class GeneticOptimizer {
     mutate(float[] chromosome, boolean force) {
         for (int i = 0; i < numberOfParams; i++) {
             boolean mutatedProperly = false;
-            if ((random.nextFloat() < MUTATION_RATE || force) && mutatedProperly)
+            if ((random.nextFloat() < MUTATION_RATE || force) && !mutatedProperly)
             {
-                float value = mutateSingleGene(chromosome, i);
+                float value = mutateSingleGene(i);
                 // Guards for frequency params to avoid lower freq to be higher than high freq
                 // Could be done by randomizing pairs, TODO
                 if (AlgorithmParameter.fromValue(i) == AlgorithmParameter.KICK_LOW_FREQ)
@@ -200,12 +214,13 @@ public class GeneticOptimizer {
                 else
                 {
                     mutatedProperly = true;
+                    chromosome[i] = value;
                 }
             }
         }
     }
 
-    private float mutateSingleGene(float[] chromosome, int i) {
+    static public float mutateSingleGene(int i) {
         Optional<Integer> maxValInt = AlgorithmParameter.maxValueForIntParameter(AlgorithmParameter.fromValue(i));
         Optional<Float> maxValFloat = AlgorithmParameter.maxValueForFloatParameter(AlgorithmParameter.fromValue(i));
         float newValue;

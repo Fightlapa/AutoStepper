@@ -19,14 +19,13 @@ public class CExperimentalSoundProcessor
 {
     public static float SAMPLE_REDUCTION_RATIO = 1000f;
     private static int FFT_SIZE = 512;
-    public static int BPM_SENSITIVITY_MS = 40;
+    public static int BPM_SENSITIVITY_MS = 23;
     public static float MIN_BPM = 70f;
     public static float MAX_BPM = 170f;
 
     private float bpm;
     private TFloatArrayList MidFFTAmount;
     private TFloatArrayList MidFFTMaxes;
-    private TFloatArrayList volume;
     private float startTime = 0f;
     private float timePerBeat = 0f;
     private int lowerFrequencyKickThreshold;
@@ -35,6 +34,9 @@ public class CExperimentalSoundProcessor
     private int lowerFrequencySnareThreshold;
     private int higherFrequencySnareThreshold;
     private int snareBandsThreshold;
+    private int lowerFrequencyHatThreshold;
+    private int higherFrequencyHatThreshold;
+    private int hatBandsThreshold;
 
     public CExperimentalSoundProcessor(TFloatArrayList params) {
         lowerFrequencyKickThreshold = Math.round(params.get(AlgorithmParameter.KICK_LOW_FREQ.value()));
@@ -44,10 +46,17 @@ public class CExperimentalSoundProcessor
         lowerFrequencySnareThreshold = Math.round(params.get(AlgorithmParameter.SNARE_LOW_FREQ.value()));
         higherFrequencySnareThreshold = Math.round(params.get(AlgorithmParameter.SNARE_HIGH_FREQ.value()));
         snareBandsThreshold = Math.round(params.get(AlgorithmParameter.SNARE_BAND_FREQ.value()));
+
+        lowerFrequencyHatThreshold = Math.round(params.get(AlgorithmParameter.HAT_LOW_FREQ.value()));
+        higherFrequencyHatThreshold = Math.round(params.get(AlgorithmParameter.HAT_HIGH_FREQ.value()));
+        hatBandsThreshold = Math.round(params.get(AlgorithmParameter.HAT_BAND_FREQ.value()));
     }
 
-    public void ProcessMusic(Song song, final TFloatArrayList[] manyTimes, final TFloatArrayList[] fewTimes, TFloatArrayList params)
+    public TFloatArrayList[] ProcessMusic(Song song, TFloatArrayList params)
     {
+        // collected song data
+        final TFloatArrayList[] manyTimes = new TFloatArrayList[4];
+        final TFloatArrayList[] fewTimes = new TFloatArrayList[4];
         AudioRecordingStream stream = AutoStepper.minimLib.loadFileStream(song.getFilename(), FFT_SIZE, false);
 
         // tell it to "play" so we can read from it.
@@ -83,38 +92,18 @@ public class CExperimentalSoundProcessor
         }
         MidFFTAmount = new TFloatArrayList();
         MidFFTMaxes = new TFloatArrayList();
-        volume = new TFloatArrayList();
 
         float largestAvg = 0f, largestMax = 0f;
-        FFT fft = new FFT(Song.FFT_SIZE, stream.getFormat().getSampleRate());
+        FFT fft = new FFT(FFT_SIZE, stream.getFormat().getSampleRate());
         int lowFreq = fft.freqToIndex(300f);
         int highFreq = fft.freqToIndex(3000f);
 
         float timePerSample = song.getTimePerSample();
+        float time = 0;
         for (int chunkIdx = 0; chunkIdx < totalChunks; ++chunkIdx)
         {
-            if( AutoStepper.INDICATOR && chunkIdx == 50)
-            {
-                // Section to playback music
-                AudioSample fullSong = AutoStepper.minimLib.loadSample(song.getFilename());
-                stream.getMillisecondLength();
-                fullSong.trigger();
-                long millis = System.currentTimeMillis();
-
-                long songLentgthToPlay = ((stream.getMillisecondLength() * chunkIdx) / totalChunks);
-                System.out.println("Would play for : " + songLentgthToPlay);
-                while (System.currentTimeMillis() - millis < songLentgthToPlay)
-                {
-                    // still play
-                }
-                fullSong.stop();
-                fullSong.close();
-            }
-
-
             stream.read(buffer);
             float[] data = buffer.getChannel(0);
-            float time = chunkIdx * timePerSample;
             // now analyze the left channel
             beatDetectFrequencyHighSensitivity.detect(data);
             beatDetectSoundHighSensitivity.detect(data);
@@ -136,38 +125,18 @@ public class CExperimentalSoundProcessor
             MidFFTAmount.add(avg);
             MidFFTMaxes.add(max);
             // store basic percussion times
-            // if (beatDetectFrequencyHighSensitivity.isRange(lowerFrequencyKickThreshold, higherFrequencyKickThreshold, kickBandsThreshold))
-            //     manyTimes[SoundParameter.KICKS.value()].add(time);
-            // // if (beatDetectFrequencyHighSensitivity.isHat())
-            // //     manyTimes[SoundParameter.HAT.value()].add(time);
-            // if (beatDetectFrequencyHighSensitivity.isRange(lowerFrequencySnareThreshold, higherFrequencySnareThreshold, snareBandsThreshold))
-            //     manyTimes[SoundParameter.SNARE.value()].add(time);
-
-            // if (beatDetectFrequencyLowSensitivity.isRange(lowerFrequencyKickThreshold, higherFrequencyKickThreshold, kickBandsThreshold))
-            //     fewTimes[SoundParameter.KICKS.value()].add(time);
-            // // if (beatDetectFrequencyLowSensitivity.isHat())
-            // //     fewTimes[SoundParameter.HAT.value()].add(time);
-            // if (beatDetectFrequencyLowSensitivity.isRange(lowerFrequencySnareThreshold, higherFrequencySnareThreshold, snareBandsThreshold))
-            //     fewTimes[SoundParameter.SNARE.value()].add(time);
-
-            // if (beatDetectSoundLowSensitivity.isOnset())
-            //     fewTimes[SoundParameter.BEAT.value()].add(time);
-
-            // if (beatDetectSoundHighSensitivity.isOnset())
-            //     manyTimes[SoundParameter.BEAT.value()].add(time);
-
-            if (beatDetectFrequencyHighSensitivity.isKick())
+            if (beatDetectFrequencyHighSensitivity.isRange(lowerFrequencyKickThreshold, higherFrequencyKickThreshold, kickBandsThreshold))
                 manyTimes[SoundParameter.KICKS.value()].add(time);
-            // if (beatDetectFrequencyHighSensitivity.isHat())
-            //     manyTimes[SoundParameter.HAT.value()].add(time);
-            if (beatDetectFrequencyHighSensitivity.isSnare(false))
+            if (beatDetectFrequencyHighSensitivity.isRange(lowerFrequencyHatThreshold, higherFrequencyHatThreshold, hatBandsThreshold))
+                manyTimes[SoundParameter.HAT.value()].add(time);
+            if (beatDetectFrequencyHighSensitivity.isRange(lowerFrequencySnareThreshold, higherFrequencySnareThreshold, snareBandsThreshold))
                 manyTimes[SoundParameter.SNARE.value()].add(time);
 
-            if (beatDetectFrequencyLowSensitivity.isKick())
+            if (beatDetectFrequencyLowSensitivity.isRange(lowerFrequencyKickThreshold, higherFrequencyKickThreshold, kickBandsThreshold))
                 fewTimes[SoundParameter.KICKS.value()].add(time);
-            // if (beatDetectFrequencyLowSensitivity.isHat())
-            //     fewTimes[SoundParameter.HAT.value()].add(time);
-            if (beatDetectFrequencyLowSensitivity.isSnare(false))
+            if (beatDetectFrequencyLowSensitivity.isRange(lowerFrequencyHatThreshold, higherFrequencyHatThreshold, hatBandsThreshold))
+                fewTimes[SoundParameter.HAT.value()].add(time);
+            if (beatDetectFrequencyLowSensitivity.isRange(lowerFrequencySnareThreshold, higherFrequencySnareThreshold, snareBandsThreshold))
                 fewTimes[SoundParameter.SNARE.value()].add(time);
 
             if (beatDetectSoundLowSensitivity.isOnset())
@@ -175,9 +144,29 @@ public class CExperimentalSoundProcessor
 
             if (beatDetectSoundHighSensitivity.isOnset())
                 manyTimes[SoundParameter.BEAT.value()].add(time);
+
+            // if (beatDetectFrequencyHighSensitivity.isKick())
+            //     manyTimes[SoundParameter.KICKS.value()].add(time);
+            // if (beatDetectFrequencyHighSensitivity.isHat())
+            //     manyTimes[SoundParameter.HAT.value()].add(time);
+            // if (beatDetectFrequencyHighSensitivity.isSnare(false))
+            //     manyTimes[SoundParameter.SNARE.value()].add(time);
+
+            // if (beatDetectFrequencyLowSensitivity.isKick())
+            //     fewTimes[SoundParameter.KICKS.value()].add(time);
+            // if (beatDetectFrequencyLowSensitivity.isHat())
+            //     fewTimes[SoundParameter.HAT.value()].add(time);
+            // if (beatDetectFrequencyLowSensitivity.isSnare(false))
+            //     fewTimes[SoundParameter.SNARE.value()].add(time);
+
+            // if (beatDetectSoundLowSensitivity.isOnset())
+            //     fewTimes[SoundParameter.BEAT.value()].add(time);
+
+            // if (beatDetectSoundHighSensitivity.isOnset())
+            //     manyTimes[SoundParameter.BEAT.value()].add(time);
+            time += timePerSample;
         }
-        // System.out.println("Loudest midrange average to normalize to 1: " + largestAvg);
-        // System.out.println("Loudest midrange maximum to normalize to 1: " + largestMax);
+
         float scaleBy = 1f / largestAvg;
         float scaleMaxBy = 1f / largestMax;
         for (int i = 0; i < MidFFTAmount.size(); i++) {
@@ -196,9 +185,13 @@ public class CExperimentalSoundProcessor
         }
         if (common.isEmpty()) {
             System.out.println("[--- FAILED: COULDN'T CALCULATE BPM ---]");
-            return;
+            throw new RuntimeException("Cannot determine BPM");
         }
-        bpm = Math.round(Averages.getMostCommonFightlapa(common, 0.5f, true));
+        bpm = Averages.getMostCommonFightlapa(common, 0.5f, true);
+        if (AutoStepper.SHOW_INFO)
+        {
+            System.out.println("[--- bpm: " + bpm + " ---]");
+        }
 
         timePerBeat = 60f / bpm;
         TFloatArrayList startTimes = new TFloatArrayList();
@@ -211,6 +204,7 @@ public class CExperimentalSoundProcessor
         startTimes.add(kickStartTime);
         startTimes.add(kickStartTime);
         startTime = -Averages.getMostCommonPhr00t(startTimes, 0.02f, false);
+        return fewTimes;
     }
 
     void AddCommonBPMs(TFloatArrayList common, TFloatArrayList times, float doubleSpeed, float timePerSample) {
@@ -236,10 +230,6 @@ public class CExperimentalSoundProcessor
     public TFloatArrayList GetMidFFTMaxes() {
         return MidFFTMaxes;
     }
-
-    // public float timePerSample() {
-    //     return timePerSample;
-    // }
 
     public float GetTimePerBeat() {
         return timePerBeat;

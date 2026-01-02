@@ -12,7 +12,7 @@ import gnu.trove.list.array.TFloatArrayList;
 
 public class Song
 {
-    public static int FFT_SIZE = 512;
+    public static int VOLUME_FFT_SIZE = 512;
     private float songTime;
     private String filename;
     private float timePerSample;
@@ -23,21 +23,21 @@ public class Song
         this.filename = filename;
         songTime = Utils.getSongTime(this.filename);
 
-        AudioRecordingStream stream = AutoStepper.minimLib.loadFileStream(filename, FFT_SIZE, false);
+        AudioRecordingStream stream = AutoStepper.minimLib.loadFileStream(filename, VOLUME_FFT_SIZE, false);
 
         // tell it to "play" so we can read from it.
         stream.play();
 
         // create the buffer we use for reading from the stream
-        MultiChannelBuffer buffer = new MultiChannelBuffer(FFT_SIZE, stream.getFormat().getChannels());
+        MultiChannelBuffer buffer = new MultiChannelBuffer(VOLUME_FFT_SIZE, stream.getFormat().getChannels());
 
         // figure out how many samples are in the stream so we can allocate the correct
         // number of spectra
         int totalSamples = (int) (songTime * stream.getFormat().getSampleRate());
-        timePerSample = FFT_SIZE / stream.getFormat().getSampleRate();
+        timePerSample = VOLUME_FFT_SIZE / stream.getFormat().getSampleRate();
 
         // now we'll analyze the samples in chunks
-        int totalChunks = (totalSamples / FFT_SIZE) + 1;
+        int totalChunks = (totalSamples / VOLUME_FFT_SIZE) + 1;
 
         float maxVolume = 0f;
         for (int chunkIdx = 0; chunkIdx < totalChunks; ++chunkIdx)
