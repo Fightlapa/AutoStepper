@@ -182,16 +182,11 @@ public class StepGenerator {
                                        boolean allowMines, TFloatArrayList params, float expectedBpm)
     {
         long wholeFunctionTimer = System.currentTimeMillis();
-        long timer = wholeFunctionTimer;
         float songTime = song.getSongTime();
-        if (AutoStepper.DEBUG_TIMINGS)
-        {
-            System.out.println("Initial song analysis: " + (System.currentTimeMillis() - timer) / 1000f + "s");
-        }
 
         // Frequencies matching snare, kicks etc. in really small time windows
         // Here even vocal could match those frequency triggering event to be set
-        timer = System.currentTimeMillis();
+        long timer = System.currentTimeMillis();
         TFloatArrayList[] percussionEventsInTime = soundProcessor.ProcessMusic(song, params);
         if (AutoStepper.DEBUG_TIMINGS)
         {
@@ -207,8 +202,8 @@ public class StepGenerator {
             }
         }
 
-        TFloatArrayList FFTMaxes = soundProcessor.GetMidFFTMaxes();
-        TFloatArrayList FFTAverages = soundProcessor.GetMidFFTAmount();
+        TFloatArrayList FFTMaxes = song.getMidFFTMaxes();
+        TFloatArrayList FFTAverages = song.getMidFFTAmount();
         TFloatArrayList volume = song.getVolume();
         float timePerBeat = soundProcessor.GetTimePerBeat();
         float startTime = soundProcessor.GetStartTime();

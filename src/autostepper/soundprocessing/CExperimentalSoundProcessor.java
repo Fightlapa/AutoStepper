@@ -18,14 +18,11 @@ import gnu.trove.list.array.TFloatArrayList;
 public class CExperimentalSoundProcessor
 {
     public static float SAMPLE_REDUCTION_RATIO = 1000f;
-    private static int FFT_SIZE = 512;
     public static int BPM_SENSITIVITY_MS = 23;
     public static float MIN_BPM = 70f;
     public static float MAX_BPM = 170f;
 
     private float bpm;
-    private TFloatArrayList MidFFTAmount;
-    private TFloatArrayList MidFFTMaxes;
     private float startTime = 0f;
     private float timePerBeat = 0f;
     private int lowerFrequencyKickThreshold;
@@ -57,14 +54,14 @@ public class CExperimentalSoundProcessor
         // collected song data
         final TFloatArrayList[] manyTimes = new TFloatArrayList[4];
         final TFloatArrayList[] fewTimes = new TFloatArrayList[4];
-        AudioRecordingStream stream = AutoStepper.minimLib.loadFileStream(song.getFilename(), FFT_SIZE, false);
+        AudioRecordingStream stream = AutoStepper.minimLib.loadFileStream(song.getFilename(), Song.FFT_SIZE, false);
 
         // tell it to "play" so we can read from it.
         stream.play();
 
         // create the fft/beatdetect objects we'll use for analysis
-        BeatDetect beatDetectFrequencyHighSensitivity = new BeatDetect(FFT_SIZE, stream.getFormat().getSampleRate());
-        BeatDetect beatDetectFrequencyLowSensitivity = new BeatDetect(FFT_SIZE, stream.getFormat().getSampleRate());
+        BeatDetect beatDetectFrequencyHighSensitivity = new BeatDetect(Song.FFT_SIZE, stream.getFormat().getSampleRate());
+        BeatDetect beatDetectFrequencyLowSensitivity = new BeatDetect(Song.FFT_SIZE, stream.getFormat().getSampleRate());
         BeatDetect beatDetectSoundHighSensitivity = new BeatDetect(stream.getFormat().getSampleRate());
         BeatDetect beatDetectSoundLowSensitivity = new BeatDetect(stream.getFormat().getSampleRate());
         beatDetectFrequencyHighSensitivity.setSensitivity(BPM_SENSITIVITY_MS);
@@ -73,14 +70,14 @@ public class CExperimentalSoundProcessor
         beatDetectSoundLowSensitivity.setSensitivity(Math.round(60000f / (float) MAX_BPM));
 
         // create the buffer we use for reading from the stream
-        MultiChannelBuffer buffer = new MultiChannelBuffer(FFT_SIZE, stream.getFormat().getChannels());
+        MultiChannelBuffer buffer = new MultiChannelBuffer(Song.FFT_SIZE, stream.getFormat().getChannels());
 
         // figure out how many samples are in the stream so we can allocate the correct
         // number of spectra
         int totalSamples = (int) (song.getSongTime() * stream.getFormat().getSampleRate());
 
         // now we'll analyze the samples in chunks
-        int totalChunks = (totalSamples / FFT_SIZE) + 1;
+        int totalChunks = (totalSamples / Song.FFT_SIZE) + 1;
 
         for (int i = 0; i < fewTimes.length; i++) {
             if (fewTimes[i] == null)
@@ -90,16 +87,10 @@ public class CExperimentalSoundProcessor
             fewTimes[i].clear();
             manyTimes[i].clear();
         }
-        MidFFTAmount = new TFloatArrayList();
-        MidFFTMaxes = new TFloatArrayList();
-
-        float largestAvg = 0f, largestMax = 0f;
-        FFT fft = new FFT(FFT_SIZE, stream.getFormat().getSampleRate());
-        int lowFreq = fft.freqToIndex(300f);
-        int highFreq = fft.freqToIndex(3000f);
 
         float timePerSample = song.getTimePerSample();
         float time = 0;
+        long timer = System.currentTimeMillis();
         for (int chunkIdx = 0; chunkIdx < totalChunks; ++chunkIdx)
         {
             stream.read(buffer);
@@ -109,21 +100,7 @@ public class CExperimentalSoundProcessor
             beatDetectSoundHighSensitivity.detect(data);
             beatDetectFrequencyLowSensitivity.detect(data);
             beatDetectSoundLowSensitivity.detect(data);
-            fft.forward(data);
-            // fft processing
-            float avg = fft.calcAvg(300f, 3000f);
-            float max = 0f;
-            for (int b = lowFreq; b <= highFreq; b++) {
-                float bandamp = fft.getBand(b);
-                if (bandamp > max)
-                    max = bandamp;
-            }
-            if (max > largestMax)
-                largestMax = max;
-            if (avg > largestAvg)
-                largestAvg = avg;
-            MidFFTAmount.add(avg);
-            MidFFTMaxes.add(max);
+
             // store basic percussion times
             if (beatDetectFrequencyHighSensitivity.isRange(lowerFrequencyKickThreshold, higherFrequencyKickThreshold, kickBandsThreshold))
                 manyTimes[SoundParameter.KICKS.value()].add(time);
@@ -166,12 +143,9 @@ public class CExperimentalSoundProcessor
             //     manyTimes[SoundParameter.BEAT.value()].add(time);
             time += timePerSample;
         }
-
-        float scaleBy = 1f / largestAvg;
-        float scaleMaxBy = 1f / largestMax;
-        for (int i = 0; i < MidFFTAmount.size(); i++) {
-            MidFFTAmount.replace(i, MidFFTAmount.get(i) * scaleBy);
-            MidFFTMaxes.replace(i, MidFFTMaxes.get(i) * scaleMaxBy);
+        if (AutoStepper.DEBUG_TIMINGS)
+        {
+            System.out.println("MAIN LOOP TIME: " + (System.currentTimeMillis() - timer) / 1000f + "s");
         }
 
         // calculate differences between percussive elements,
@@ -221,14 +195,6 @@ public class CExperimentalSoundProcessor
 
     public float GetBpm() {
         return bpm;
-    }
-
-    public TFloatArrayList GetMidFFTAmount() {
-        return MidFFTAmount;
-    }
-
-    public TFloatArrayList GetMidFFTMaxes() {
-        return MidFFTMaxes;
     }
 
     public float GetTimePerBeat() {

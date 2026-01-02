@@ -38,7 +38,7 @@ public class AutoStepper {
     public static boolean PREVIEW_DETECTION = false;
 
     public static boolean SHOW_INFO = false;
-    public static boolean DEBUG_TIMINGS = false;
+    public static boolean DEBUG_TIMINGS = true;
 
     // Having let's say sample rate of 44.100
     // We might want to reduce it a bit
