@@ -1,0 +1,8 @@
+.gradle/*
+build/*
+bin/*
+.vscode/settings.json
+samples/Abracadabra.mp3
+samples/edamame.mp3
+Target/*.sm
+Target/*.mp3

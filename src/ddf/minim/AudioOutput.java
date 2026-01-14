@@ -68,6 +68,7 @@ import ddf.minim.ugens.Summer;
  * @example Basics/SynthesizeSound
  * @example Basics/SequenceSound
  */
+@SuppressWarnings("deprecation")
 public class AudioOutput extends AudioSource implements Polyphonic
 {
 	// the synth attach our signals to

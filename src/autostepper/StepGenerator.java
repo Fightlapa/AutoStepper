@@ -1,297 +1,260 @@
 package autostepper;
 
 import gnu.trove.list.array.TFloatArrayList;
+
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.Scanner;
+import java.util.stream.Collectors;
+
+import autostepper.moveassigners.SimfileDifficulty;
+import autostepper.musiceventsdetector.CMusicEventsDetector;
+import autostepper.genetic.AlgorithmParameter;
+import autostepper.misc.Utils;
+import autostepper.moveassigners.CStepAssigner;
+import autostepper.moveassigners.ParametrizedAssigner;
+import autostepper.vibejudges.ExcitedByEverythingJudge;
+import autostepper.vibejudges.DeafToBeatJudge;
+import autostepper.vibejudges.IVibeJudge;
+import autostepper.vibejudges.ParametrizedJudge;
+import autostepper.vibejudges.PopJudge;
+import autostepper.vibejudges.SoundParameter;
+import autostepper.vibejudges.VibeScore;
+import autostepper.soundprocessing.CExperimentalSoundProcessor;
+import autostepper.soundprocessing.Song;
+import ddf.minim.AudioSample;
 
 /**
  *
  * @author Phr00t
  */
 public class StepGenerator {
-    
-    static private int MAX_HOLD_BEAT_COUNT = 4;
-    static private char EMPTY = '0', STEP = '1', HOLD = '2', STOP = '3', MINE = 'M';
-    
-    static Random rand = new Random();
-    
-    static private int getHoldCount() {
-        int ret = 0;
-        if( holding[0] > 0f ) ret++;
-        if( holding[1] > 0f ) ret++;
-        if( holding[2] > 0f ) ret++;
-        if( holding[3] > 0f ) ret++;
-        return ret;
+
+    CExperimentalSoundProcessor soundProcessor;
+    private float granularityModifier;
+    private float preciseGranularityModifier;
+    private ArrayList<IVibeJudge> judges;
+    private ArrayList<CStepAssigner> moveAssigners;
+
+    public StepGenerator(TFloatArrayList params)
+    {
+        granularityModifier = params.get(AlgorithmParameter.GRANULARITY_MODIFIER.value());
+        preciseGranularityModifier = params.get(AlgorithmParameter.PRECISE_GRANULARITY_MODIFIER.value());
+
+        judges = new ArrayList<>();
+
+        judges.add(new ParametrizedJudge(params.get(AlgorithmParameter.FIRST_VOLUME_THRESHOLD.value()),
+                                         params.get(AlgorithmParameter.SECOND_VOLUME_THRESHOLD.value()),
+                                        params.get(AlgorithmParameter.FFT_MAX_THRESHOLD.value())));
+                                        
+        // Just like with vibe coding :)
+        // Idea is to assign vibes if current note id drop-like, standard, or it's sustained which is a candidate for hold
+        // For now only checking if something should happen, not exactly on which arrow
+        // So that later on it could be assigned to exact arrow, so '0210' or '1002' etc.
+
+        // judges.add(new PopJudge());
+        // judges.add(new ExcitedByEverythingJudge());
+        // judges.add(new DeafToBeatJudge());
+
+        moveAssigners = new ArrayList<>();
+        // moveAssigners.add(new PopStepAssigner());
+        // moveAssigners.add(new LazyPopStepAssigner());
+        // moveAssigners.add(new MoreTapsAssigner());
+        int jumpThreshold = Math.round(params.get(AlgorithmParameter.JUMP_THRESHOLD.value()));
+        int tapThreshold = Math.round(params.get(AlgorithmParameter.TAP_THRESHOLD.value()));
+        int sustainThreshold = Math.round(params.get(AlgorithmParameter.SUSTAIN_THESHOLD.value()));
+        moveAssigners.add(new ParametrizedAssigner(jumpThreshold, tapThreshold, sustainThreshold));
+
+        soundProcessor = new CExperimentalSoundProcessor(params);
     }
-    
-    static private int getRandomHold() {
-        int hc = getHoldCount();
-        if(hc == 0) return -1;
-        int pickHold = rand.nextInt(hc);
-        for(int i=0;i<4;i++) {
-            if( holding[i] > 0f ) {
-                if( pickHold == 0 ) return i;
-                pickHold--;
-            }
-        }
-        return -1;
+
+    static String redStep(int step) {
+        // step: 0–9
+        int[] colors = {
+            231, // white
+            224, // very light pink
+            217,
+            210,
+            203,
+            196, // strong red
+            160,
+            124,
+            88,
+            52   // dark red
+        };
+        return "\u001B[38;5;" + colors[step] + "m";
     }
-    
-    // make a note line, with lots of checks, balances & filtering
-    static float[] holding = new float[4];
-    static float lastJumpTime;
-    static ArrayList<char[]> AllNoteLines = new ArrayList<>();
-    static float lastKickTime = 0f;
-    static int commaSeperator, commaSeperatorReset, mineCount, holdRun;
-    
-    private static char[] getHoldStops(int currentHoldCount, float time, int holds) {
-        char[] holdstops = new char[4];
-        holdstops[0] = '0';
-        holdstops[1] = '0';
-        holdstops[2] = '0';
-        holdstops[3] = '0';
-        if( currentHoldCount > 0 ) {
-            while( holds < 0 ) {
-                int index = getRandomHold();
-                if( index == -1 ) {
-                    holds = 0;
-                    currentHoldCount = 0;
-                } else {
-                    holding[index] = 0f;
-                    holdstops[index] = STOP;
-                    holds++; currentHoldCount--;
+
+    public void preview(String filename, ArrayList<Map<SoundParameter, Object>> detected, long stepGranularity, float timePerBeat, TFloatArrayList FFTAverages, TFloatArrayList FFTMaxes, TFloatArrayList volume, float totalTime)
+    {
+        AudioSample fullSong = AutoStepper.minimLib.loadSample(filename);
+ 
+        // get the most accurate start time as possible
+        long millis = System.currentTimeMillis();
+        long jazzMusicStarts = System.currentTimeMillis();
+        // Just an assumption how long it can take to start music
+        millis += 1;
+        fullSong.trigger();
+        int fftLength = FFTMaxes.size();
+
+        try
+        {
+            String RESET = "\u001B[0m";
+            long timeGranularity = (long)(1000f * timePerBeat) / stepGranularity;
+            int idx = 0;
+            for (Map<SoundParameter,Object> map : detected)
+            {            
+                StringBuilder sb = new StringBuilder();
+                sb.append((boolean)map.get(SoundParameter.KICKS) ? "K" : " ");
+                sb.append((boolean)map.get(SoundParameter.SNARE) ? "S" : " ");
+                // sb.append((boolean)map.get(SoundParameter.HAT) ? "H" : " ");
+                if ((boolean)map.get(SoundParameter.HALF_BEAT))
+                {
+                    sb.append("b");
                 }
-            }
-            // if we still have holds, subtract counter until 0
-            for(int i=0;i<4;i++) {
-                if( holding[i] > 0f ) {
-                    holding[i] -= 1f;
-                    if( holding[i] <= 0f ) {
-                        holding[i] = 0f;
-                        holdstops[i] = STOP;
-                        currentHoldCount--;
+                else if ((boolean)map.get(SoundParameter.BEAT))
+                {
+                    sb.append("B");
+                }
+                else
+                {
+                    sb.append(" ");
+                }
+                sb.append((boolean)map.get(SoundParameter.SUSTAINED) ? "~" : " ");
+                sb.append((boolean)map.get(SoundParameter.SILENCE) ? "." : " ");
+                sb.append((boolean)map.get(SoundParameter.NOTHING) ? "N" : " ");
+                sb.append("  " + idx + " / " + detected.size());
+                sb.append('\t');
+                String base = sb.toString();
+                while (System.currentTimeMillis() - millis < timeGranularity)
+                {
+                    StringBuilder sbFull = new StringBuilder();
+                    sbFull.append(base);
+                    int fftIndex = (int) (((System.currentTimeMillis() - jazzMusicStarts) * fftLength) / (totalTime * 1000));
+                    if (fftIndex < 0)
+                    {
+                        fftIndex = 0;
                     }
-                } 
-            }
-        }        
-        return holdstops;
-    }
-    
-    private static String getNoteLineIndex(int i) {
-        if( i < 0 || i >= AllNoteLines.size() ) return "0000";
-        return String.valueOf(AllNoteLines.get(i));
-    }
-    
-    private static String getLastNoteLine() {
-        return getNoteLineIndex(AllNoteLines.size()-1);
-    }
-    
-    private static void makeNoteLine(String lastLine, float time, int steps, int holds, boolean mines) {
-        if( steps == 0 ) {
-            char[] ret = getHoldStops(getHoldCount(), time, holds);
-            AllNoteLines.add(ret);
-            return;
-        }
-        if( steps > 1 && time - lastJumpTime < (mines ? 2f : 4f) ) steps = 1; // don't spam jumps
-        if( steps >= 2 ) {
-             // no hands
-            steps = 2;
-            lastJumpTime = time;
-        }
-        // can't hold or step more than 2
-        int currentHoldCount = getHoldCount(); 
-        if( holds + currentHoldCount > 2 ) holds = 2 - currentHoldCount;
-        if( steps + currentHoldCount > 2 ) steps = 2 - currentHoldCount;
-        // if we have had a run of 3 holds, don't make a new hold to prevent player from spinning
-        if( holdRun >= 2 && holds > 0 ) holds = 0;
-        // are we stopping holds?
-        char[] noteLine = getHoldStops(currentHoldCount, time, holds);
-        // if we are making a step, but just coming off a hold, move that hold end up to give proper
-        // time to make move to new step
-        if( steps > 0 && lastLine.contains("3") ) {
-            int currentIndex = AllNoteLines.size()-1;
-            char[] currentLine = AllNoteLines.get(currentIndex);
-            for(int i=0;i<4;i++) {
-                if( currentLine[i] == '3' ) {
-                    // got a hold stop here, lets move it up
-                    currentLine[i] = '0';
-                    char[] nextLineUp = AllNoteLines.get(currentIndex-1);
-                    if( nextLineUp[i] == '2' ) {
-                        nextLineUp[i] = '1';
-                    } else nextLineUp[i] = '3';
+                    if (fftIndex >= FFTMaxes.size())
+                    {
+                        System.out.println("ERROR!!!!");
+                        fftIndex = FFTMaxes.size() - 1;
+                    }
+                    float fftMax = FFTMaxes.get(fftIndex);
+                    int fftMaxLevel = (int)(fftMax*7);
+                    sbFull.append(redStep(fftMaxLevel));
+                    sbFull.append("  FFTMAX: " + "=".repeat(fftMaxLevel));
+                    
+                    sbFull.append('\t');
+                    float fftAvg = FFTAverages.get(fftIndex);
+                    int fftAvgLevel = (int)(fftAvg*7);
+                    sbFull.append(redStep(fftAvgLevel));
+                    sbFull.append("  FFTAVG: " + "=".repeat(fftAvgLevel));
+
+                    sbFull.append('\t');
+                    float volumeNow = volume.get(fftIndex);
+                    int volumeLevel = (int)(volumeNow*7);
+                    sbFull.append(redStep(volumeLevel));
+                    sbFull.append("  VOL: " + "=".repeat(volumeLevel));
+
+                    sbFull.append(RESET);
+                    System.out.println(sbFull.toString());
+                    Thread.sleep(timeGranularity/10);
                 }
+                idx++;
+                millis += timeGranularity;
             }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
-        // ok, make the steps
-        String completeLine;
-        char[] orig = new char[4];
-        orig[0] = noteLine[0];
-        orig[1] = noteLine[1];
-        orig[2] = noteLine[2];
-        orig[3] = noteLine[3];
-        float[] willhold = new float[4]; 
-        do {
-            int stepcount = steps, holdcount = holds;
-            noteLine[0] = orig[0];
-            noteLine[1] = orig[1];
-            noteLine[2] = orig[2];
-            noteLine[3] = orig[3];
-            willhold[0] = 0f;
-            willhold[1] = 0f;
-            willhold[2] = 0f;
-            willhold[3] = 0f;
-            while(stepcount > 0) {
-                int stepindex = rand.nextInt(4);
-                if( noteLine[stepindex] != EMPTY || holding[stepindex] > 0f ) continue;
-                if( holdcount > 0 ) {
-                    noteLine[stepindex] = HOLD;
-                    willhold[stepindex] = MAX_HOLD_BEAT_COUNT;
-                    holdcount--; stepcount--;
-                } else {
-                    noteLine[stepindex] = STEP;
-                    stepcount--;
-                }
-            }
-            // put in a mine?
-            if( mines ) {
-                mineCount--;
-                if( mineCount <= 0 ) {
-                    mineCount = rand.nextInt(8);
-                    if( rand.nextInt(8) == 0 && noteLine[0] == EMPTY && holding[0] <= 0f ) noteLine[0] = MINE;
-                    if( rand.nextInt(8) == 0 && noteLine[1] == EMPTY && holding[1] <= 0f ) noteLine[1] = MINE;
-                    if( rand.nextInt(8) == 0 && noteLine[2] == EMPTY && holding[2] <= 0f ) noteLine[2] = MINE;
-                    if( rand.nextInt(8) == 0 && noteLine[3] == EMPTY && holding[3] <= 0f ) noteLine[3] = MINE;
-                }
-            }
-            completeLine = String.valueOf(noteLine);
-        } while( completeLine.equals(lastLine) && completeLine.equals("0000") == false );
-        if( willhold[0] > holding[0] ) holding[0] = willhold[0];
-        if( willhold[1] > holding[1] ) holding[1] = willhold[1];
-        if( willhold[2] > holding[2] ) holding[2] = willhold[2];
-        if( willhold[3] > holding[3] ) holding[3] = willhold[3];
-        if( getHoldCount() == 0 ) {
-            holdRun = 0;
-        } else holdRun++;
-        AllNoteLines.add(noteLine);
+        finally {
+            fullSong.stop();
+            fullSong.close();
+        }
     }
     
-    private static boolean isNearATime(float time, TFloatArrayList timelist, float threshold) {
-        for(int i=0;i<timelist.size();i++) {
-            float checktime = timelist.get(i);
-            if( Math.abs(checktime - time) <= threshold ) return true;
-            if( checktime > time + threshold ) return false;
+    public ArrayList<ArrayList<Character>> GenerateNotes(Song song, SimfileDifficulty difficulty, int stepGranularity,
+                                       boolean allowMines, TFloatArrayList params, float expectedBpm)
+    {
+        long wholeFunctionTimer = System.currentTimeMillis();
+        float songTime = song.getSongTime();
+
+        // Frequencies matching snare, kicks etc. in really small time windows
+        // Here even vocal could match those frequency triggering event to be set
+        long timer = System.currentTimeMillis();
+        TFloatArrayList[] percussionEventsInTime = soundProcessor.ProcessMusic(song, params);
+        if (AutoStepper.DEBUG_TIMINGS)
+        {
+            System.out.println("Initial percussion event parsing: " + (System.currentTimeMillis() - timer) / 1000f + "s");
         }
-        return false;
-    }
-    
-    private static float getFFT(float time, TFloatArrayList FFTAmounts, float timePerFFT) {
-        int index = Math.round(time / timePerFFT);
-        if( index < 0 || index >= FFTAmounts.size()) return 0f;
-        return FFTAmounts.getQuick(index);
-    }
-    
-    private static boolean sustainedFFT(float startTime, float len, float granularity, float timePerFFT, TFloatArrayList FFTMaxes, TFloatArrayList FFTAvg, float aboveAvg, float averageMultiplier) {
-        int endIndex = (int)Math.floor((startTime + len) / timePerFFT);
-        if( endIndex >= FFTMaxes.size() ) return false;
-        int wiggleRoom = Math.round(0.1f * len / timePerFFT);
-        int startIndex = (int)Math.floor(startTime / timePerFFT);
-        int pastGranu = (int)Math.floor((startTime + granularity) / timePerFFT);
-        boolean startThresholdReached = false;
-        for(int i=startIndex;i<=endIndex;i++) {
-            float amt = FFTMaxes.getQuick(i);
-            float avg = FFTAvg.getQuick(i) * averageMultiplier;
-            if( i <= pastGranu ) {
-                startThresholdReached |= amt >= avg + aboveAvg;
-            } else {
-                if( startThresholdReached == false ) return false;
-                if( amt < avg ) {
-                    wiggleRoom--;
-                    if( wiggleRoom <= 0 ) return false;
-                }
+
+        if (expectedBpm != -1f)
+        {
+            if (Math.abs(soundProcessor.GetBpm() - expectedBpm) > 0.6f)
+            {
+                // not as expected
+                return new ArrayList<>();
             }
         }
-        return true;
+
+        TFloatArrayList FFTMaxes = song.getMidFFTMaxes();
+        TFloatArrayList FFTAverages = song.getMidFFTAmount();
+        TFloatArrayList volume = song.getVolume();
+        float timePerBeat = soundProcessor.GetTimePerBeat();
+        float startTime = soundProcessor.GetStartTime();
+
+        // range which was doing the trick is usually between 0.2f and 0.3f
+        float sustainFactor = 0.35f;
+        CMusicEventsDetector eventsDetector = new CMusicEventsDetector();
+        
+        // To gather info about kicks, snares etc.
+        // It parses whole song, so that next steps can access context
+        // This time using some logic, it can split vocal matching snare freq from real snare
+        timer = System.currentTimeMillis();
+        ArrayList<Map<SoundParameter, Object>> NoteEvents = eventsDetector.GetEvents(stepGranularity, timePerBeat, startTime, songTime, FFTAverages, FFTMaxes, volume, song.getTimePerSample(), percussionEventsInTime, sustainFactor, granularityModifier, preciseGranularityModifier);
+        if (AutoStepper.DEBUG_TIMINGS)
+        {
+            System.out.println("Precise music events parsing: " + (System.currentTimeMillis() - timer) / 1000f + "s");
+        }
+
+
+        if (AutoStepper.PREVIEW_DETECTION)
+        {
+            preview(song.getFilename(), NoteEvents, stepGranularity, timePerBeat, FFTAverages, FFTMaxes, volume, songTime);
+        }
+
+        timer = System.currentTimeMillis();
+        ArrayList<Map<VibeScore, Integer>> NoteVibes = judges.get(0).GetVibes(NoteEvents);
+        if (AutoStepper.DEBUG_TIMINGS)
+        {
+            System.out.println("Vibe assign: " + (System.currentTimeMillis() - timer) / 1000f + "s");
+        }
+
+        timer = System.currentTimeMillis();
+        ArrayList<ArrayList<Character>> moveSet = moveAssigners.get(0).AssignMoves(NoteVibes, difficulty, songTime);
+        if (AutoStepper.DEBUG_TIMINGS)
+        {
+            System.out.println("Assigning moves: " + (System.currentTimeMillis() - timer) / 1000f + "s");
+            System.out.println("Whole generation took: " + (System.currentTimeMillis() - wholeFunctionTimer) / 1000f + "s");
+        }
+
+        return moveSet;
     }
-    
-    public static String GenerateNotes(int stepGranularity, int skipChance,
-                                       TFloatArrayList[] manyTimes,
-                                       TFloatArrayList[] fewTimes,
-                                       TFloatArrayList FFTAverages, TFloatArrayList FFTMaxes, float timePerFFT,
-                                       float timePerBeat, float timeOffset, float totalTime,
-                                       boolean allowMines) {      
-        // reset variables
-        AllNoteLines.clear();
-        lastJumpTime = -10f;
-        holdRun = 0;
-        holding[0] = 0f;
-        holding[1] = 0f;
-        holding[2] = 0f;
-        holding[3] = 0f;
-        lastKickTime = 0f;
-        commaSeperatorReset = 4 * stepGranularity;
-        float lastSkippedTime = -10f;
-        int totalStepsMade = 0, timeIndex = 0;
-        boolean skippedLast = false;
-        float timeGranularity = timePerBeat / stepGranularity;
-        for(float t = timeOffset; t <= totalTime; t += timeGranularity) {
-            int steps = 0, holds = 0;
-            String lastLine = getLastNoteLine();
-            if( t > 0f ) {
-                float fftavg = getFFT(t, FFTAverages, timePerFFT);
-                float fftmax = getFFT(t, FFTMaxes, timePerFFT);
-                boolean sustained = sustainedFFT(t, 0.75f, timeGranularity, timePerFFT, FFTMaxes, FFTAverages, 0.25f, 0.45f);
-                boolean nearKick = isNearATime(t, fewTimes[AutoStepper.KICKS], timePerBeat / stepGranularity);
-                boolean nearSnare = isNearATime(t, fewTimes[AutoStepper.SNARE], timePerBeat / stepGranularity);
-                boolean nearEnergy = isNearATime(t, fewTimes[AutoStepper.ENERGY], timePerBeat / stepGranularity);
-                steps = sustained || nearKick || nearSnare || nearEnergy ? 1 : 0;
-                if( sustained ) {
-                    holds = 1 + (nearEnergy ? 1 : 0);
-                } else if( fftmax < 0.5f ) {
-                    holds = fftmax < 0.25f ? -2 : -1;
-                }
-                if( nearKick && (nearSnare || nearEnergy) && timeIndex % 2 == 0 &&
-                    steps > 0 && lastLine.contains("1") == false && lastLine.contains("2") == false && lastLine.contains("3") == false ) {
-                     // only jump in high areas, on solid beats (not half beats)
-                    steps = 2;
-                }
-                // wait, are we skipping new steps?
-                // if we just got done from a jump, don't have a half beat
-                // if we are holding something, don't do half-beat steps
-                if( timeIndex % 2 == 1 &&
-                    (skipChance > 1 && timeIndex % 2 == 1 && rand.nextInt(skipChance) > 0 || getHoldCount() > 0) ||
-                    t - lastJumpTime < timePerBeat ) {
-                    steps = 0;
-                    if( holds > 0 ) holds = 0;
-                }                
-            }
-            if( AutoStepper.DEBUG_STEPS ) {
-                makeNoteLine(lastLine, t, timeIndex % 2 == 0 ? 1 : 0, -2, allowMines);
-            } else makeNoteLine(lastLine, t, steps, holds, allowMines);
-            totalStepsMade += steps;
-            timeIndex++;
-        }
-        // ok, put together AllNotes
-        String AllNotes = "";
-        commaSeperator = commaSeperatorReset;
-        for(int i=0;i<AllNoteLines.size();i++) {
-            AllNotes += getNoteLineIndex(i) + "\n";
-            commaSeperator--;
-            if( commaSeperator == 0 ) {
-                AllNotes += ",\n";
-                commaSeperator = commaSeperatorReset;
-            }
-        }
-        // fill out the last empties
-        while( commaSeperator > 0 ) {
-            AllNotes += "3333";
-            commaSeperator--;
-            if( commaSeperator > 0 ) AllNotes += "\n";
-        }
-        int _stepCount = AllNotes.length() - AllNotes.replace("1", "").length();
-        int _holdCount = AllNotes.length() - AllNotes.replace("2", "").length();
-        int _mineCount = AllNotes.length() - AllNotes.replace("M", "").length();
-        System.out.println("Steps: " + _stepCount + ", Holds: " + _holdCount + ", Mines: " + _mineCount);
-        return AllNotes;
+
+    public float getBPM()
+    {
+        return soundProcessor.GetBpm();
+    }
+
+    public float getStartTime()
+    {
+        return soundProcessor.GetStartTime();
     }
     
 }
+
